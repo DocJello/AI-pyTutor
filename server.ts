@@ -12,17 +12,27 @@ const JWT_SECRET = process.env.JWT_SECRET || 'its-prototype-secret-key';
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // --- MongoDB Schemas ---
-const ResponseCacheSchema = new mongoose.Schema({
-  problemId: String, // ID of the specific exercise
-  studentCode: String, // Normalized version of the code
-  mistakePattern: String,
+const PedagogicalRuleSchema = new mongoose.Schema({
+  id: { type: String, unique: true }, // e.g. 'missing_colon_if'
+  pattern: String, // Regex or keyword
+  type: { type: String, enum: ['regex', 'keyword'], default: 'keyword' },
   diagnosis: String,
   explanation: String,
   hint: String,
-  masteryUpdate: String
+  priority: { type: Number, default: 0 }
 });
 
-const ResponseCache = mongoose.model('ResponseCache', ResponseCacheSchema);
+const PedagogicalRule = mongoose.model('PedagogicalRule', PedagogicalRuleSchema);
+
+const ResponseCacheSchema = new mongoose.Schema({
+  problemId: String,
+  studentCode: String,
+  diagnosis: String,
+  explanation: String,
+  hint: String,
+  masteryUpdate: String,
+  isUnknown: { type: Boolean, default: false } // Flag for teacher to review
+});
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -59,14 +69,57 @@ const connectDB = async () => {
     await mongoose.connect(MONGODB_URI);
     isConnected = true;
     console.log('Connected to MongoDB Atlas');
+    
+    // Seed basic pedagogical rules if empty
+    const ruleCount = await PedagogicalRule.countDocuments();
+    if (ruleCount === 0) {
+      console.log('Seeding initial pedagogical rules...');
+      const initialRules = [
+        {
+          id: 'missing_colon',
+          pattern: '(if|for|while|def)(?!.*:).*$',
+          type: 'regex',
+          diagnosis: 'Syntax Error (Missing Colon)',
+          explanation: 'In Python, control structures like if-statements, for-loops, and function definitions MUST end with a colon (:).',
+          hint: 'Look at the end of your conditional or loop line. Is there a colon there?',
+          priority: 10
+        },
+        {
+          id: 'single_equals',
+          pattern: 'if.*[^=]=[^=].*:',
+          type: 'regex',
+          diagnosis: 'Logical/Syntax Error (Assignment vs Comparison)',
+          explanation: 'You are using a single "=" inside an if-statement. In Python, "=" is for assigning values, but "==" is used to compare them.',
+          hint: 'Check your comparison inside the if-statement. Use double equals (==) to check for equality.',
+          priority: 9
+        },
+        {
+          id: 'print_no_parens',
+          pattern: 'print ["\'].*["\']',
+          type: 'regex',
+          diagnosis: 'Syntax Error (Python 3 Print)',
+          explanation: 'In Python 3, print is a function and requires parentheses around its arguments.',
+          hint: 'Try wrapping what you want to output in parentheses, like print("hello").',
+          priority: 8
+        },
+        {
+          id: 'indentation_basic',
+          pattern: '^[ ]+(if|for|while|def)',
+          type: 'regex',
+          diagnosis: 'Indentation Error',
+          explanation: 'Python relies on indentation to define blocks of code. Unexpected spaces at the start of a line can confuse the interpreter.',
+          hint: 'Check if your code is aligned correctly. Only indent lines that are INSIDE a block (like an if-statement).',
+          priority: 7
+        }
+      ];
+      await PedagogicalRule.insertMany(initialRules);
+    }
   } catch (err) {
     console.error('MongoDB connection error:', err);
   }
 };
 
-// Initialize AI
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-
+// Initialize Rule Engine (No AI needed)
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
@@ -200,104 +253,73 @@ const PORT = 3000;
     }
   });
 
-  // --- ITS Tutoring Engine with Caching ---
+  // --- ITS Tutoring Engine (Rule-Based) ---
   app.post('/api/tutoring/chat', authenticateToken, async (req: any, res) => {
-    console.log('--- POST /api/tutoring/chat ---');
+    console.log('--- POST /api/tutoring/chat (Rule-Based) ---');
     const { message, problemId } = req.body;
     const userId = req.user.id;
-
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'AI Service configuration missing.' });
-    }
+    const studentCode = message.trim();
 
     try {
-      // 1. Try to find a cached explanation for this error pattern
-      const cached = await ResponseCache.findOne({ 
-        problemId: problemId || 'general', 
-        studentCode: message.trim() 
-      });
-      
-      if (cached) {
-        console.log('Serving cached AI diagnosis');
-        return res.json({ 
-          content: `Diagnosis: ${cached.diagnosis}\nExplanation: ${cached.explanation}\nHint: ${cached.hint}`,
-          isCached: true 
-        });
-      }
-
-      // 2. Fetch User Mastery
+      // 1. Fetch User Mastery for history
       let userMastery = await Mastery.findOne({ userId });
       if (!userMastery) userMastery = new Mastery({ userId });
 
-      // 3. Call AI
-      const systemPrompt = `
-SYSTEM ROLE: You are an Intelligent Tutoring System (ITS) for Python.
-TARGET LEARNERS: Beginners.
-LEARNER MODEL: Current Mastery=${userMastery.masteryLevel}, Recent Mistakes=${userMastery.repeatedMistakes.join(', ')}.
+      // 2. Find matching pedagogical rules
+      const rules = await PedagogicalRule.find().sort({ priority: -1 });
+      let matchedRule = null;
 
-RULES:
-1. Diagnose the learner’s error (Syntax, Logical, or Conceptual).
-2. Explain WHY it is wrong.
-3. Provide a scaffolded hint (no direct solution).
-4. Use supportive language.
-
-RESPONSE FORMAT (MANDATORY):
-Diagnosis: (Analysis)
-Explanation: (The 'why')
-Hint: (Scaffold)
-[METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string or null"}
-`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // Using 1.5 flash for now as per previous success, but should consider 3-flash if 403 is resolved
-        contents: [{ role: 'user', parts: [{ text: message }] }],
-        config: {
-          systemInstruction: systemPrompt
-        }
-      });
-
-      const responseText = response.text || '';
-      const metadataMatch = responseText.match(/\[METADATA\]: (.*)/);
-      let cleanText = responseText.replace(/\[METADATA\]: .*/, '').trim();
-
-      if (metadataMatch) {
-        try {
-          const metadata = JSON.parse(metadataMatch[1]);
-          
-          // Update Mastery in DB
-          if (metadata.masteryUpdate) userMastery.masteryLevel = metadata.masteryUpdate;
-          if (metadata.identifiedMistake && !userMastery.repeatedMistakes.includes(metadata.identifiedMistake)) {
-            userMastery.repeatedMistakes.push(metadata.identifiedMistake);
+      for (const rule of rules) {
+        if (rule.type === 'regex') {
+          const regex = new RegExp(rule.pattern, 'm');
+          if (regex.test(studentCode)) {
+            matchedRule = rule;
+            break;
           }
-          userMastery.history.push({ 
-            timestamp: new Date(), 
-            mistake: metadata.identifiedMistake,
-            mastery: metadata.masteryUpdate
-          });
-          await userMastery.save();
-
-          // 4. Cache this response for others
-          const diagnosis = cleanText.match(/Diagnosis: (.*)/)?.[1] || '';
-          const explanation = cleanText.match(/Explanation: (.*)/)?.[1] || '';
-          const hint = cleanText.match(/Hint: (.*)/)?.[1] || '';
-
-          await ResponseCache.create({
-            problemId: problemId || 'general',
-            studentCode: message.trim(),
-            diagnosis,
-            explanation,
-            hint,
-            masteryUpdate: metadata.masteryUpdate
-          });
-        } catch (e) {
-          console.error("Metadata/Cache Save Error:", e);
+        } else if (rule.type === 'keyword') {
+          if (studentCode.includes(rule.pattern)) {
+            matchedRule = rule;
+            break;
+          }
         }
       }
 
-      res.json({ content: cleanText });
+      let content = "";
+      let metadata = { masteryUpdate: "Low", identifiedMistake: "unknown" };
+
+      if (matchedRule) {
+        console.log(`Matched Rule: ${matchedRule.id}`);
+        content = `Diagnosis: ${matchedRule.diagnosis}\nExplanation: ${matchedRule.explanation}\nHint: ${matchedRule.hint}`;
+        metadata = { masteryUpdate: "Medium", identifiedMistake: matchedRule.id };
+      } else {
+        // Generic response if no pattern matched
+        console.log("No specific rule matched. Providing generic guidance.");
+        content = `Diagnosis: Unidentified Pattern\nExplanation: I see your submission, but I couldn't find a specific common error pattern. \nHint: Read the problem description carefully. Check for typos, indentation, or variable names. If you're stuck, try breaking the problem into smaller parts!`;
+        
+        // Log unknown error for teachers to review
+        await ResponseCache.create({
+          problemId: problemId || 'general',
+          studentCode,
+          isUnknown: true
+        });
+      }
+
+      // Update Mastery/History
+      userMastery.masteryLevel = metadata.masteryUpdate;
+      if (metadata.identifiedMistake && !userMastery.repeatedMistakes.includes(metadata.identifiedMistake)) {
+        userMastery.repeatedMistakes.push(metadata.identifiedMistake);
+      }
+      userMastery.history.push({ 
+        timestamp: new Date(), 
+        mistake: metadata.identifiedMistake,
+        mastery: metadata.masteryUpdate
+      });
+      await userMastery.save();
+
+      res.json({ content, isCached: !!matchedRule });
     } catch (error: any) {
-      console.error('Gemini API Error:', error);
-      res.status(500).json({ error: error.message || 'Error communicating with AI service' });
+      console.error('Tutoring Engine Error:', error);
+      res.status(500).json({ error: 'Internal Tutoring Error' });
     }
   });
 
