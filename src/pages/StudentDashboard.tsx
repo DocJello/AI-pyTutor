@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, Sparkles, AlertCircle, CheckCircle2, Info, ArrowRight, BrainCircuit } from 'lucide-react';
 import { useAuth } from '../App';
-import { GoogleGenAI } from '@google/genai';
 
 interface Message {
   role: 'user' | 'assistant';
