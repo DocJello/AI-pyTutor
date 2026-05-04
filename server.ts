@@ -191,7 +191,7 @@ Recommendation: (Next topic or activity)
           role: h.role === 'user' ? 'user' : 'model',
           parts: [{ text: h.content }]
         })),
-        systemInstruction: systemPrompt
+        systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
       });
 
       const result = await chat.sendMessage(message);
@@ -293,4 +293,3 @@ Recommendation: (Next topic or activity)
   }
 
   export default app;
-
