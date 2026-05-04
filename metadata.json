@@ -1,6 +1,6 @@
 {
-  "name": "Python ITS Prototype",
-  "description": "An Intelligent Tutoring System for introductory Python programming using EDM and Knowledge Engineering.",
+  "name": "Python AI Tutor (ITS)",
+  "description": "An Intelligent Tutoring System for introductory Python programming, powered by Gemini and educational data mining (EDM) principles.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
