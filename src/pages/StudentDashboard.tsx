@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, Sparkles, AlertCircle, CheckCircle2, Info, ArrowRight, BrainCircuit } from 'lucide-react';
 import { useAuth } from '../App';
+import { GoogleGenAI } from '@google/genai';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -16,6 +17,9 @@ const StudentDashboard = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   
+  // Initialize AI - using process.env.GEMINI_API_KEY as per skill instructions for Vite
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
   useEffect(() => {
     // Fetch current mastery for context
     fetch('/api/tutoring/mastery')
@@ -42,27 +46,72 @@ const StudentDashboard = () => {
     setIsTyping(true);
 
     try {
-      const res = await fetch('/api/tutoring/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: text,
-          history: messages.slice(-10) 
-        }),
+      const currentMastery = mastery?.masteryLevel || 'Low';
+      const repeatedMistakes = mastery?.repeatedMistakes?.join(', ') || '';
+
+      const systemPrompt = `
+SYSTEM ROLE: You are an Intelligent Tutoring System (ITS) designed for introductory programming education.
+TARGET LEARNERS: Undergraduate students with little to no prior experience (Intro Python).
+SCOPE: Variables and data types, Conditional statements, Loops, Basic functions.
+LEARNER MODEL (EDM Simulation): 
+- Current Mastery: ${currentMastery}
+- Repeated Mistakes in this session: ${repeatedMistakes}
+
+RULES:
+1. Diagnose the learner’s knowledge based on answers or code submissions.
+2. Identify the type of learner error: Syntax, Logical, or Conceptual.
+3. Explain WHY the learner’s answer is incorrect before suggesting improvement.
+4. Do NOT immediately give the full solution.
+5. Provide hints progressively.
+6. Recommend what the learner should practice next.
+7. Use clear, supportive language.
+8. Adapt explanations if errors repeat.
+
+RESPONSE FORMAT (MANDATORY):
+Diagnosis: (Brief analysis)
+Explanation: (Simple explanation)
+Hint: (Gentle clue)
+Example (if needed): (Short example)
+Recommendation: (Next topic or activity)
+[METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string or null"}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: newMessages.slice(-10).map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }]
+        })),
+        config: {
+          systemInstruction: systemPrompt
+        }
       });
 
-      const data = await res.json();
+      const responseText = response.text || '';
       
-      if (res.ok) {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.content }]);
-        
-        // Refresh local mastery state
-        fetch('/api/tutoring/mastery')
-          .then(r => r.json())
-          .then(m => setMastery(m));
-      } else {
-        throw new Error(data.error);
+      // Parse metadata for EDM
+      const metadataMatch = responseText.match(/\[METADATA\]: (.*)/);
+      if (metadataMatch) {
+        try {
+          const metadata = JSON.parse(metadataMatch[1]);
+          // Notify backend of metadata update
+          await fetch('/api/tutoring/metadata', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ metadata })
+          });
+          
+          // Refresh local mastery state
+          const mRes = await fetch('/api/tutoring/mastery');
+          const mData = await mRes.json();
+          setMastery(mData);
+        } catch (e) {
+          console.error("Failed to parse metadata", e);
+        }
       }
+
+      const cleanText = responseText.replace(/\[METADATA\]: .*/, '').trim();
+      setMessages(prev => [...prev, { role: 'assistant', content: cleanText }]);
+      
     } catch (err: any) {
       console.error(err);
       setMessages(prev => [...prev, { role: 'assistant', content: `Diagnosis: AI Connection Error\nExplanation: ${err.message}\nHint: Check your API key or connection.` }]);
