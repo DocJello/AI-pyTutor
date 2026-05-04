@@ -1,6 +1,6 @@
 {
   "name": "Python AI Tutor (ITS)",
-  "description": "An Intelligent Tutoring System for introductory Python programming, powered by Gemini and educational data mining (EDM) principles.",
+  "description": "An Intelligent Tutoring System for introductory Python programming, powered by a deterministic pedagogical rule engine and educational data mining (EDM) principles.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
