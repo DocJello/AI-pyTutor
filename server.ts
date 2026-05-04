@@ -5,10 +5,14 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
+import { GoogleGenAI } from '@google/genai';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || 'its-prototype-secret-key';
 const MONGODB_URI = process.env.MONGODB_URI;
+
+// Initialize AI
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // --- MongoDB Schemas ---
 const UserSchema = new mongoose.Schema({
@@ -143,6 +147,103 @@ const PORT = 3000;
   });
 
   // --- ITS Tutoring Engine ---
+  app.post('/api/tutoring/chat', authenticateToken, async (req: any, res) => {
+    console.log('--- POST /api/tutoring/chat ---');
+    const { message, history } = req.body;
+    const userId = req.user.id;
+    
+    if (!process.env.GEMINI_API_KEY) {
+      console.error('CRITICAL: GEMINI_API_KEY is not set in the environment.');
+      return res.status(500).json({ error: 'AI Service configuration missing. Please check server logs.' });
+    }
+
+    try {
+      let userMastery = await Mastery.findOne({ userId });
+      if (!userMastery) {
+        userMastery = new Mastery({ userId });
+      }
+
+      console.log(`User Mastery Level: ${userMastery.masteryLevel}`);
+
+      const systemPrompt = `
+SYSTEM ROLE: You are an Intelligent Tutoring System (ITS) designed for introductory programming education.
+TARGET LEARNERS: Undergraduate students with little to no prior experience (Intro Python).
+SCOPE: Variables and data types, Conditional statements, Loops, Basic functions.
+LEARNER MODEL (EDM Simulation): 
+- Current Mastery: ${userMastery.masteryLevel}
+- Repeated Mistakes in this session: ${userMastery.repeatedMistakes.join(', ')}
+
+RULES:
+1. Diagnose the learner’s knowledge based on answers or code submissions.
+2. Identify the type of learner error: Syntax, Logical, or Conceptual.
+3. Explain WHY the learner’s answer is incorrect before suggesting improvement.
+4. Do NOT immediately give the full solution.
+5. Provide hints progressively.
+6. Recommend what the learner should practice next.
+7. Use clear, supportive language.
+8. Adapt explanations if errors repeat.
+
+RESPONSE FORMAT (MANDATORY):
+Diagnosis: (Brief analysis)
+Explanation: (Simple explanation)
+Hint: (Gentle clue)
+Example (if needed): (Short example)
+Recommendation: (Next topic or activity)
+[METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string or null"}
+`;
+
+      const contents = history.slice(-10).map((h: any) => ({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.content }]
+      }));
+      
+      // Ensure the last role is user if the message is coming in
+      contents.push({ role: 'user', parts: [{ text: message }] });
+
+      console.log('Calling Gemini API (gemini-1.5-flash)...');
+      const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents: contents,
+        config: {
+          systemInstruction: systemPrompt
+        }
+      });
+
+      const responseText = response.text || '';
+      console.log('Received response from Gemini.');
+
+      // Parse metadata for EDM
+      const metadataMatch = responseText.match(/\[METADATA\]: (.*)/);
+      if (metadataMatch) {
+        try {
+          const metadataStr = metadataMatch[1];
+          const metadata = JSON.parse(metadataStr);
+          console.log('Parsed metadata:', metadata);
+
+          if (metadata.masteryUpdate) userMastery.masteryLevel = metadata.masteryUpdate;
+          if (metadata.identifiedMistake && !userMastery.repeatedMistakes.includes(metadata.identifiedMistake)) {
+            userMastery.repeatedMistakes.push(metadata.identifiedMistake);
+          }
+          userMastery.history.push({ 
+            timestamp: new Date(), 
+            mistake: metadata.identifiedMistake,
+            mastery: metadata.masteryUpdate
+          });
+          await userMastery.save();
+          console.log('Updated user mastery in DB.');
+        } catch (e) {
+          console.error("Failed to parse metadata", e);
+        }
+      }
+
+      const cleanText = responseText.replace(/\[METADATA\]: .*/, '').trim();
+      res.json({ content: cleanText });
+    } catch (error: any) {
+      console.error('Gemini API Error:', error);
+      res.status(500).json({ error: error.message || 'Error communicating with AI service' });
+    }
+  });
+
   // This endpoint now only updates mastery metadata
   app.post('/api/tutoring/metadata', authenticateToken, async (req: any, res) => {
     console.log('POST /api/tutoring/metadata', req.body);
