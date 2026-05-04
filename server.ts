@@ -6,14 +6,9 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 
-import { GoogleGenAI } from '@google/genai';
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || 'its-prototype-secret-key';
 const MONGODB_URI = process.env.MONGODB_URI;
-
-// Initialize AI
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // --- MongoDB Schemas ---
 const UserSchema = new mongoose.Schema({
@@ -148,85 +143,6 @@ const PORT = 3000;
   });
 
   // --- ITS Tutoring Engine ---
-  app.post('/api/tutoring/chat', authenticateToken, async (req: any, res) => {
-    console.log('POST /api/tutoring/chat', req.body);
-    const { message, history } = req.body;
-    const userId = req.user.id;
-    
-    try {
-      let userMastery = await Mastery.findOne({ userId });
-      if (!userMastery) {
-        userMastery = new Mastery({ userId });
-      }
-
-      const systemPrompt = `
-SYSTEM ROLE: You are an Intelligent Tutoring System (ITS) designed for introductory programming education.
-TARGET LEARNERS: Undergraduate students with little to no prior experience (Intro Python).
-SCOPE: Variables and data types, Conditional statements, Loops, Basic functions.
-LEARNER MODEL (EDM Simulation): 
-- Current Mastery: ${userMastery.masteryLevel}
-- Repeated Mistakes in this session: ${userMastery.repeatedMistakes.join(', ')}
-
-RULES:
-1. Diagnose the learner’s knowledge based on answers or code submissions.
-2. Identify the type of learner error: Syntax, Logical, or Conceptual.
-3. Explain WHY the learner’s answer is incorrect before suggesting improvement.
-4. Do NOT immediately give the full solution.
-5. Provide hints progressively.
-6. Recommend what the learner should practice next.
-7. Use clear, supportive language.
-8. Adapt explanations if errors repeat.
-
-RESPONSE FORMAT (MANDATORY):
-Diagnosis: (Brief analysis)
-Explanation: (Simple explanation)
-Hint: (Gentle clue)
-Example (if needed): (Short example)
-Recommendation: (Next topic or activity)
-[METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string or null"}
-`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: history.slice(-10).map((h: any) => ({
-          role: h.role === 'user' ? 'user' : 'model',
-          parts: [{ text: h.content }]
-        })).concat({ role: 'user', parts: [{ text: message }] }),
-        config: {
-          systemInstruction: systemPrompt
-        }
-      });
-
-      const responseText = response.text || '';
-
-      // Parse metadata for EDM
-      const metadataMatch = responseText.match(/\[METADATA\]: (.*)/);
-      if (metadataMatch) {
-        try {
-          const metadata = JSON.parse(metadataMatch[1]);
-          if (metadata.masteryUpdate) userMastery.masteryLevel = metadata.masteryUpdate;
-          if (metadata.identifiedMistake && !userMastery.repeatedMistakes.includes(metadata.identifiedMistake)) {
-            userMastery.repeatedMistakes.push(metadata.identifiedMistake);
-          }
-          userMastery.history.push({ 
-            timestamp: new Date(), 
-            mistake: metadata.identifiedMistake,
-            mastery: metadata.masteryUpdate
-          });
-          await userMastery.save();
-        } catch (e) {
-          console.error("Failed to parse metadata", e);
-        }
-      }
-
-      const cleanText = responseText.replace(/\[METADATA\]: .*/, '').trim();
-      res.json({ content: cleanText });
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
   // This endpoint now only updates mastery metadata
   app.post('/api/tutoring/metadata', authenticateToken, async (req: any, res) => {
     console.log('POST /api/tutoring/metadata', req.body);
