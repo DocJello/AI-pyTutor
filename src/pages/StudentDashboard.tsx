@@ -76,7 +76,7 @@ Recommendation: (Next topic or activity)
 [METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string or null"}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash',
         contents: newMessages.slice(-10).map(m => ({
           role: m.role === 'user' ? 'user' : 'model',
           parts: [{ text: m.content }]
