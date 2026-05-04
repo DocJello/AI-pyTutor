@@ -5,7 +5,6 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
-import { GoogleGenAI } from '@google/genai';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || 'its-prototype-secret-key';
@@ -33,6 +32,8 @@ const ResponseCacheSchema = new mongoose.Schema({
   masteryUpdate: String,
   isUnknown: { type: Boolean, default: false } // Flag for teacher to review
 });
+
+const ResponseCache = mongoose.model('ResponseCache', ResponseCacheSchema);
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
