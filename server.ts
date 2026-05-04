@@ -36,24 +36,34 @@ const MasterySchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 const Mastery = mongoose.model('Mastery', MasterySchema);
 
-async function startServer() {
-  // Connect to MongoDB
-  if (MONGODB_URI) {
-    try {
-      await mongoose.connect(MONGODB_URI);
-      console.log('Connected to MongoDB Atlas');
-    } catch (err) {
-      console.error('MongoDB connection error:', err);
-    }
-  } else {
-    console.warn('MONGODB_URI not found. Persistence will not work on production. Please set it in your environment variables.');
+// --- MongoDB Connection ---
+let isConnected = false;
+const connectDB = async () => {
+  if (isConnected) return;
+  if (!MONGODB_URI) {
+    console.warn('MONGODB_URI not found.');
+    return;
   }
+  try {
+    await mongoose.connect(MONGODB_URI);
+    isConnected = true;
+    console.log('Connected to MongoDB Atlas');
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+  }
+};
 
-  const app = express();
-  const PORT = 3000;
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
 
-  app.use(express.json());
-  app.use(cookieParser());
+// Middleware to ensure DB is connected
+app.use(async (req, res, next) => {
+  await connectDB();
+  next();
+});
+
+const PORT = 3000;
 
   // --- Auth Middleware ---
   const authenticateToken = (req: any, res: any, next: any) => {
@@ -276,10 +286,10 @@ Recommendation: (Next topic or activity)
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
+  if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 
-startServer();
-
+  export default app;
