@@ -200,9 +200,9 @@ Recommendation: (Next topic or activity)
       // Ensure the last role is user if the message is coming in
       contents.push({ role: 'user', parts: [{ text: message }] });
 
-      console.log('Calling Gemini API (gemini-1.5-flash)...');
+      console.log('Calling Gemini API (gemini-2.0-flash)...');
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.0-flash',
         contents: contents,
         config: {
           systemInstruction: systemPrompt
