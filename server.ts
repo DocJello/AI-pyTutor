@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || 'its-prototype-secret-key';
@@ -156,7 +156,7 @@ const PORT = 3000;
       }
 
       // Hide API Key on server-side
-      const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY || '');
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
       const systemPrompt = `
