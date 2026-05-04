@@ -5,12 +5,25 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
+import { GoogleGenAI } from '@google/genai';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || 'its-prototype-secret-key';
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // --- MongoDB Schemas ---
+const ResponseCacheSchema = new mongoose.Schema({
+  problemId: String, // ID of the specific exercise
+  studentCode: String, // Normalized version of the code
+  mistakePattern: String,
+  diagnosis: String,
+  explanation: String,
+  hint: String,
+  masteryUpdate: String
+});
+
+const ResponseCache = mongoose.model('ResponseCache', ResponseCacheSchema);
+
 const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
@@ -50,6 +63,9 @@ const connectDB = async () => {
     console.error('MongoDB connection error:', err);
   }
 };
+
+// Initialize AI
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 const app = express();
 app.use(express.json());
@@ -181,6 +197,107 @@ const PORT = 3000;
       res.json(userMastery || { masteryLevel: 'Low', repeatedMistakes: [] });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- ITS Tutoring Engine with Caching ---
+  app.post('/api/tutoring/chat', authenticateToken, async (req: any, res) => {
+    console.log('--- POST /api/tutoring/chat ---');
+    const { message, problemId } = req.body;
+    const userId = req.user.id;
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'AI Service configuration missing.' });
+    }
+
+    try {
+      // 1. Try to find a cached explanation for this error pattern
+      const cached = await ResponseCache.findOne({ 
+        problemId: problemId || 'general', 
+        studentCode: message.trim() 
+      });
+      
+      if (cached) {
+        console.log('Serving cached AI diagnosis');
+        return res.json({ 
+          content: `Diagnosis: ${cached.diagnosis}\nExplanation: ${cached.explanation}\nHint: ${cached.hint}`,
+          isCached: true 
+        });
+      }
+
+      // 2. Fetch User Mastery
+      let userMastery = await Mastery.findOne({ userId });
+      if (!userMastery) userMastery = new Mastery({ userId });
+
+      // 3. Call AI
+      const systemPrompt = `
+SYSTEM ROLE: You are an Intelligent Tutoring System (ITS) for Python.
+TARGET LEARNERS: Beginners.
+LEARNER MODEL: Current Mastery=${userMastery.masteryLevel}, Recent Mistakes=${userMastery.repeatedMistakes.join(', ')}.
+
+RULES:
+1. Diagnose the learner’s error (Syntax, Logical, or Conceptual).
+2. Explain WHY it is wrong.
+3. Provide a scaffolded hint (no direct solution).
+4. Use supportive language.
+
+RESPONSE FORMAT (MANDATORY):
+Diagnosis: (Analysis)
+Explanation: (The 'why')
+Hint: (Scaffold)
+[METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string or null"}
+`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash', // Using 1.5 flash for now as per previous success, but should consider 3-flash if 403 is resolved
+        contents: [{ role: 'user', parts: [{ text: message }] }],
+        config: {
+          systemInstruction: systemPrompt
+        }
+      });
+
+      const responseText = response.text || '';
+      const metadataMatch = responseText.match(/\[METADATA\]: (.*)/);
+      let cleanText = responseText.replace(/\[METADATA\]: .*/, '').trim();
+
+      if (metadataMatch) {
+        try {
+          const metadata = JSON.parse(metadataMatch[1]);
+          
+          // Update Mastery in DB
+          if (metadata.masteryUpdate) userMastery.masteryLevel = metadata.masteryUpdate;
+          if (metadata.identifiedMistake && !userMastery.repeatedMistakes.includes(metadata.identifiedMistake)) {
+            userMastery.repeatedMistakes.push(metadata.identifiedMistake);
+          }
+          userMastery.history.push({ 
+            timestamp: new Date(), 
+            mistake: metadata.identifiedMistake,
+            mastery: metadata.masteryUpdate
+          });
+          await userMastery.save();
+
+          // 4. Cache this response for others
+          const diagnosis = cleanText.match(/Diagnosis: (.*)/)?.[1] || '';
+          const explanation = cleanText.match(/Explanation: (.*)/)?.[1] || '';
+          const hint = cleanText.match(/Hint: (.*)/)?.[1] || '';
+
+          await ResponseCache.create({
+            problemId: problemId || 'general',
+            studentCode: message.trim(),
+            diagnosis,
+            explanation,
+            hint,
+            masteryUpdate: metadata.masteryUpdate
+          });
+        } catch (e) {
+          console.error("Metadata/Cache Save Error:", e);
+        }
+      }
+
+      res.json({ content: cleanText });
+    } catch (error: any) {
+      console.error('Gemini API Error:', error);
+      res.status(500).json({ error: error.message || 'Error communicating with AI service' });
     }
   });
 
