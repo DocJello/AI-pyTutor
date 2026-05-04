@@ -157,7 +157,7 @@ const PORT = 3000;
 
       // Hide API Key on server-side
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const systemPrompt = `
 SYSTEM ROLE: You are an Intelligent Tutoring System (ITS) designed for introductory programming education.
@@ -293,3 +293,4 @@ Recommendation: (Next topic or activity)
   }
 
   export default app;
+
