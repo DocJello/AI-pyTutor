@@ -53,15 +53,22 @@ const StudentDashboard = () => {
         }),
       });
 
-      const data = await res.json();
+      let data;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const textResponse = await res.text();
+        throw new Error(textResponse || 'Server error');
+      }
       
       if (res.ok) {
         setMessages(prev => [...prev, { role: 'assistant', content: data.content }]);
         
         // Refresh local mastery state
         fetch('/api/tutoring/mastery')
-          .then(r => r.json())
-          .then(m => setMastery(m));
+          .then(r => r.ok ? r.json() : null)
+          .then(m => m && setMastery(m));
       } else {
         throw new Error(data.error || 'Server error');
       }
