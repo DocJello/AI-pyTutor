@@ -9,6 +9,14 @@ import mongoose from 'mongoose';
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || 'its-prototype-secret-key';
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -70,7 +78,10 @@ const connectDB = async () => {
     return;
   }
   try {
-    await mongoose.connect(MONGODB_URI);
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
     isConnected = true;
     console.log('Connected to MongoDB Atlas');
     
@@ -151,9 +162,14 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Middleware to ensure DB is connected
-app.use(async (req, res, next) => {
-  await connectDB();
-  next();
+app.use(async (_req, _res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('Middleware DB connection error:', err);
+    next(); // Continue anyway, routes will handle missing connection
+  }
 });
 
 const PORT = 3000;
@@ -178,13 +194,23 @@ const PORT = 3000;
 
   // --- API Routes ---
 
+  // Health check
+  app.get('/api/health', async (_req, res) => {
+    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    res.json({ status: 'ok', database: dbStatus, time: new Date() });
+  });
+
   // Register
   app.post('/api/auth/register', async (req, res) => {
     const { name, email, password, role } = req.body;
+    console.log(`[AUTH] Registering user: ${email}`);
     
     try {
       const existingUser = await User.findOne({ email });
-      if (existingUser) return res.status(400).json({ error: 'User already exists' });
+      if (existingUser) {
+        console.warn(`[AUTH] Registration failed, user exists: ${email}`);
+        return res.status(400).json({ error: 'User already exists' });
+      }
 
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
@@ -197,6 +223,7 @@ const PORT = 3000;
       });
 
       await newUser.save();
+      console.log(`[AUTH] User created: ${newUser.email}`);
       
       if (newUser.role === 'student') {
         const initialMastery = new Mastery({
@@ -207,6 +234,7 @@ const PORT = 3000;
 
       res.json({ message: 'User registered successfully' });
     } catch (err: any) {
+      console.error('[AUTH] Registration error:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -214,14 +242,22 @@ const PORT = 3000;
   // Login
   app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
+    console.log(`[AUTH] Login attempt for: ${email}`);
     
     try {
       const user = await User.findOne({ email });
-      if (!user) return res.status(400).json({ error: 'User not found' });
+      if (!user) {
+        console.warn(`[AUTH] User not found: ${email}`);
+        return res.status(400).json({ error: 'User not found' });
+      }
 
       const validPass = await bcrypt.compare(password, user.password);
-      if (!validPass) return res.status(400).json({ error: 'Invalid password' });
+      if (!validPass) {
+        console.warn(`[AUTH] Invalid password for: ${email}`);
+        return res.status(400).json({ error: 'Invalid password' });
+      }
 
+      console.log(`[AUTH] Successful login: ${user.name} (${user.role})`);
       const token = jwt.sign({ id: user._id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '24h' });
       res.cookie('token', token, { 
         httpOnly: true, 
@@ -231,6 +267,7 @@ const PORT = 3000;
       });
       res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
     } catch (err: any) {
+      console.error('[AUTH] Login error:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -514,11 +551,10 @@ Hint: (Scaffold)
     });
   }
 
-  if (process.env.NODE_ENV !== 'production') {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+  console.log('Environment:', process.env.NODE_ENV || 'development');
+});
 
-  export default app;
+export default app;
 
