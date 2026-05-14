@@ -196,17 +196,23 @@ Hint: (Scaffold)
   return null;
 }
 
-// --- Server Setup ---
-async function startServer() {
-  const app = express();
-  app.use(express.json());
-  app.use(cookieParser());
+// --- Auth Middleware ---
+const app = express();
 
-  app.use(async (_req, _res, next) => {
+// Middleware to ensure DB is connected
+app.use(async (_req, _res, next) => {
+  try {
     await connectDB();
-    next();
-  });
+  } catch (err) {
+    console.error('DB connection failed in middleware:', err);
+  }
+  next();
+});
 
+app.use(express.json());
+app.use(cookieParser());
+
+async function startServer() {
   const authenticateToken = (req: any, res: any, next: any) => {
     const token = req.cookies.token;
     if (!token) return res.status(401).json({ error: 'Access denied' });
@@ -339,11 +345,24 @@ async function startServer() {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static('dist'));
-    app.get('*', (req, res) => res.sendFile(path.resolve('dist', 'index.html')));
+    // In production, this file is bundled to dist/server.cjs
+    // So __dirname will be the absolute path to the 'dist' folder
+    const distPath = path.resolve(__dirname, process.env.ESBUILD_BUNDLE ? '.' : 'dist');
+    console.log(`[PROD] Serving static files from: ${distPath}`);
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
   }
 
-  app.listen(PORT, '0.0.0.0', () => console.log(`Server on ${PORT}`));
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server listening on http://0.0.0.0:${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error('[CRITICAL] Failed to start server:', err);
+});
+
+export default app;
