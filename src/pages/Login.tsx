@@ -24,10 +24,10 @@ const LoginPage = () => {
         login(data.user);
         navigate('/');
       } else {
-        setError(data.error);
+        setError(data.error || 'Login failed. Please check your credentials.');
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.');
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.');
     }
   };
 
