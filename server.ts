@@ -83,46 +83,18 @@ const connectDB = async () => {
     
     // Seed basic pedagogical rules if empty
     const ruleCount = await PedagogicalRule.countDocuments();
-    if (ruleCount === 0) {
+    if (ruleCount < 5) {
       const initialRules = [
-        {
-          id: 'missing_colon',
-          pattern: '(if|for|while|def)(?!.*:).*$',
-          type: 'regex',
-          diagnosis: 'Syntax Error (Missing Colon)',
-          explanation: 'In Python, control structures like if-statements, for-loops, and function definitions MUST end with a colon (:).',
-          hint: 'Look at the end of your conditional or loop line. Is there a colon there?',
-          priority: 10
-        },
-        {
-          id: 'single_equals',
-          pattern: 'if.*[^=]=[^=].*:',
-          type: 'regex',
-          diagnosis: 'Logical/Syntax Error (Assignment vs Comparison)',
-          explanation: 'You are using a single "=" inside an if-statement. In Python, "=" is for assigning values, but "==" is used to compare them.',
-          hint: 'Check your comparison inside the if-statement. Use double equals (==) to check for equality.',
-          priority: 9
-        },
-        {
-          id: 'print_no_parens',
-          pattern: 'print ["\'].*["\']',
-          type: 'regex',
-          diagnosis: 'Syntax Error (Python 3 Print)',
-          explanation: 'In Python 3, print is a function and requires parentheses around its arguments.',
-          hint: 'Try wrapping what you want to output in parentheses, like print("hello").',
-          priority: 8
-        },
-        {
-          id: 'indentation_basic',
-          pattern: '^[ ]+(if|for|while|def)',
-          type: 'regex',
-          diagnosis: 'Indentation Error',
-          explanation: 'Python relies on indentation to define blocks of code.',
-          hint: 'Check if your code is aligned correctly.',
-          priority: 7
-        }
+        { id: 'greeting', pattern: '^(hi|hello|hey|ready|begin|start|morning|afternoon|evening).*', type: 'regex', diagnosis: 'General Greeting', explanation: 'Welcome to the Python Intelligent Tutoring System! I am here to help you learn Python step-by-step.', hint: 'Try writing a simple print statement to start, like: print("Hello World")', priority: 100 },
+        { id: 'missing_colon', pattern: '(if|for|while|def)(?!.*:).*$', type: 'regex', diagnosis: 'Syntax Error (Missing Colon)', explanation: 'In Python, control structures like if-statements, for-loops, and function definitions MUST end with a colon (:).', hint: 'Look at the end of your conditional or loop line. Is there a colon there?', priority: 10 },
+        { id: 'single_equals', pattern: 'if.*[^=]=[^=].*:', type: 'regex', diagnosis: 'Logical/Syntax Error (Assignment vs Comparison)', explanation: 'You are using a single "=" inside an if-statement. In Python, "=" is for assigning values, but "==" is used to compare them.', hint: 'Check your comparison inside the if-statement. Use double equals (==) to check for equality.', priority: 9 },
+        { id: 'print_no_parens', pattern: 'print ["\'].*["\']', type: 'regex', diagnosis: 'Syntax Error (Python 3 Print)', explanation: 'In Python 3, print is a function and requires parentheses around its arguments.', hint: 'Try wrapping what you want to output in parentheses, like print("hello").', priority: 8 },
+        { id: 'indentation_basic', pattern: '^[ ]+(if|for|while|def)', type: 'regex', diagnosis: 'Indentation Error', explanation: 'Python relies on indentation to define blocks of code.', hint: 'Check if your code is aligned correctly.', priority: 7 }
       ];
-      await PedagogicalRule.insertMany(initialRules);
+      
+      for (const rule of initialRules) {
+        await PedagogicalRule.updateOne({ id: rule.id }, { $set: rule }, { upsert: true });
+      }
     }
   } catch (err) {
     console.error('MongoDB connection error:', err);
@@ -297,22 +269,36 @@ async function startServer() {
         } else {
           const aiResponse = await getAIResponse(studentCode, userMastery);
           if (aiResponse) {
-            const m = aiResponse.match(/\[METADATA\]: (.*)/);
-            responseText = aiResponse.replace(/\[METADATA\]: .*/, '').trim();
-            if (m) {
-              const p = JSON.parse(m[1]);
-              metadata.masteryUpdate = p.masteryUpdate || "Low";
-              metadata.identifiedMistake = p.identifiedMistake || "ai";
-              await ResponseCache.create({
-                problemId: problemId || 'general', studentCode, 
-                diagnosis: responseText.match(/Diagnosis: (.*)/)?.[1] || '',
-                explanation: responseText.match(/Explanation: (.*)/)?.[1] || '',
-                hint: responseText.match(/Hint: (.*)/)?.[1] || '',
-                masteryUpdate: metadata.masteryUpdate
-              });
+            // Robust metadata extraction (supports multi-line and different positions)
+            const metaRegex = /\[METADATA\]:\s*(\{.*\})/;
+            const metaMatch = aiResponse.match(metaRegex);
+            responseText = aiResponse.replace(metaRegex, '').trim();
+
+            if (metaMatch) {
+              try {
+                const p = JSON.parse(metaMatch[1]);
+                metadata.masteryUpdate = p.masteryUpdate || "Low";
+                metadata.identifiedMistake = p.identifiedMistake || "ai";
+                
+                // Better diagnosis/explanation/hint extraction for cache
+                const diag = responseText.match(/Diagnosis:\s*(.*?)(?=\nExplanation:|\nHint:|$)/si)?.[1] || 'AI Analysis';
+                const expl = responseText.match(/Explanation:\s*(.*?)(?=\nHint:|$)/si)?.[1] || responseText;
+                const hint = responseText.match(/Hint:\s*(.*)/si)?.[1] || 'Check your code logic again.';
+
+                await ResponseCache.create({
+                  problemId: problemId || 'general', 
+                  studentCode, 
+                  diagnosis: diag.trim(),
+                  explanation: expl.trim(),
+                  hint: hint.trim(),
+                  masteryUpdate: metadata.masteryUpdate
+                });
+              } catch (e) {
+                console.warn('Metadata JSON parse failed', e);
+              }
             }
           } else {
-            responseText = "Diagnosis: Unknown\nExplanation: No pattern identified.\nHint: Check indentation.";
+            responseText = "Diagnosis: System Guidance\nExplanation: I'm currently unable to access the full AI reasoning engine, but I can still check your code for common patterns.\nHint: Try simplified code blocks or check your network connection.";
           }
         }
       }
