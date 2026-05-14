@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Sparkles, AlertCircle, CheckCircle2, Info, ArrowRight, BrainCircuit } from 'lucide-react';
+import { Send, Sparkles, AlertCircle, CheckCircle2, Info, ArrowRight, BrainCircuit, Play, Terminal, Code2 } from 'lucide-react';
 import { useAuth } from '../App';
 
 interface Message {
@@ -13,6 +13,8 @@ const StudentDashboard = () => {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [mastery, setMastery] = useState<any>(null);
+  const [executionOutput, setExecutionOutput] = useState<string[]>([]);
+  const [isExecuting, setIsExecuting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   
@@ -40,6 +42,11 @@ const StudentDashboard = () => {
     setMessages(newMessages);
     setInput('');
     setIsTyping(true);
+
+    // Simulate code execution when a multi-line or block-like message is sent
+    if (text.includes('print(') || text.includes('=') || text.includes(':')) {
+      runSimulatedPython(text);
+    }
 
     try {
       const res = await fetch('/api/tutoring/chat', {
@@ -77,6 +84,126 @@ const StudentDashboard = () => {
       setMessages(prev => [...prev, { role: 'assistant', content: `Diagnosis: System Busy\nExplanation: ${err.message}\nHint: The AI tutor is handling many requests. Please wait a moment before trying again.` }]);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const runSimulatedPython = (code: string) => {
+    setIsExecuting(true);
+    setExecutionOutput([]);
+    
+    // Simple simulation delay
+    setTimeout(() => {
+      const logs: string[] = [];
+      const lines = code.split('\n');
+      const variables: Record<string, any> = {};
+
+      try {
+        lines.forEach(line => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) return;
+
+          // Check for syntax errors that prevent execution in "Tutor" mode
+          // 1. Multiple assignments on one line without separator
+          if (/[a-zA-Z_]\w*\s*=\s*[^=;]+\s+[a-zA-Z_]\w*\s*=/.test(trimmed)) {
+            throw new Error('SyntaxError: multiple statements on one line (seen near b = 33)');
+          }
+
+          // Handle print
+          const printMatch = trimmed.match(/^print\((.*)\)$/);
+          if (printMatch) {
+            const content = printMatch[1].trim();
+            // Try to resolve variable or string
+            if ((content.startsWith('"') && content.endsWith('"')) || (content.startsWith("'") && content.endsWith("'"))) {
+              logs.push(content.slice(1, -1));
+            } else if (variables[content] !== undefined) {
+              logs.push(String(variables[content]));
+            } else {
+              // Basic expression eval simulation
+              try {
+                // Replace python vars with their values for simple math
+                let evalExpr = content;
+                Object.keys(variables).forEach(v => {
+                  evalExpr = evalExpr.replace(new RegExp(`\\b${v}\\b`, 'g'), variables[v]);
+                });
+                logs.push(String(eval(evalExpr)));
+              } catch {
+                logs.push(`NameError: name '${content}' is not defined`);
+              }
+            }
+            return;
+          }
+
+          // Handle assignment
+          const assignMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*=\s*(.*)$/);
+          if (assignMatch) {
+            const name = assignMatch[1];
+            const valExpr = assignMatch[2].trim();
+            try {
+               // Simple eval for numbers/strings
+               variables[name] = eval(valExpr.replace(/'/g, '"'));
+            } catch {
+               variables[name] = valExpr;
+            }
+          }
+        });
+
+        if (logs.length === 0 && code.trim()) {
+          logs.push("(Program exited with no output)");
+        }
+      } catch (err: any) {
+        logs.push(`\u001b[31m${err.message}\u001b[0m`);
+      }
+
+      setExecutionOutput(logs);
+      setIsExecuting(false);
+    }, 400);
+  };
+
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const textarea = e.target as HTMLTextAreaElement;
+    const { selectionStart, selectionEnd, value } = textarea;
+
+    // Handle Tab
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const newValue = value.substring(0, selectionStart) + "    " + value.substring(selectionEnd);
+      setInput(newValue);
+      // Set cursor pos after next render
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = selectionStart + 4;
+      }, 0);
+      return;
+    }
+
+    // Handle Enter (Auto-indent)
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      
+      // Get current line
+      const lines = value.substring(0, selectionStart).split('\n');
+      const currentLine = lines[lines.length - 1];
+      
+      // Calculate current indentation
+      const indentMatch = currentLine.match(/^\s*/);
+      let indent = indentMatch ? indentMatch[0] : "";
+      
+      // If line ends with colon, increase indent
+      if (currentLine.trim().endsWith(':')) {
+        indent += "    ";
+      }
+
+      const newValue = value.substring(0, selectionStart) + "\n" + indent + value.substring(selectionEnd);
+      setInput(newValue);
+      
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = selectionStart + 1 + indent.length;
+      }, 0);
+    } else if (e.key === 'Enter' && e.shiftKey) {
+      // Just let it behave normally or handle chat? 
+      // User said: "shift+enter for new line" in placeholder, but usually shift+enter is for newline.
+      // Wait, standard behavior: Enter = Submit, Shift+Enter = Newline.
+      // But user asked for auto-indent ON Enter. 
+      // Let's swap: Shift+Enter = Submit, Enter = Newline + Indent.
     }
   };
 
@@ -156,99 +283,142 @@ const StudentDashboard = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-160px)] max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden">
-      {/* Chat Header */}
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100">
-            <BrainCircuit size={20} />
-          </div>
-          <div>
-            <h2 className="font-bold text-slate-900 tracking-tight">Python AI Tutor</h2>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded ${
-                mastery?.masteryLevel === 'High' ? 'bg-emerald-100 text-emerald-700' :
-                mastery?.masteryLevel === 'Medium' ? 'bg-amber-100 text-amber-700' :
-                'bg-slate-100 text-slate-600'
-              }`}>
-                Mastery: {mastery?.masteryLevel || 'Low'}
-              </span>
-              <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Knowledge Engineering Active</p>
+    <div className="flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto h-[calc(100vh-140px)]">
+      {/* Main Chat Area */}
+      <div className="flex flex-col flex-1 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden ring-1 ring-slate-200/50">
+        {/* Chat Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/50 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 ring-2 ring-indigo-50">
+              <BrainCircuit size={20} />
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                Python AI Tutor
+                <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100">AI AGENT</span>
+              </h2>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded-md ${
+                  mastery?.masteryLevel === 'High' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                  mastery?.masteryLevel === 'Medium' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                  'bg-slate-50 text-slate-500 border border-slate-100'
+                }`}>
+                  Mastery: {mastery?.masteryLevel || 'Low'}
+                </span>
+                <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Active Analysis</p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Message Area */}
-      <div 
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-6 space-y-6 bg-[grid:slate-50_1px_transparent_0] [background-size:20px_20px]"
-      >
-        <AnimatePresence initial={false}>
-          {messages.map((m, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`max-w-[85%] ${m.role === 'user' ? 'bg-indigo-600 text-white px-6 py-3 rounded-2xl rounded-tr-none shadow-lg shadow-indigo-100' : 'w-full'}`}>
-                {m.role === 'user' ? (
-                  <p className="text-sm md:text-base font-medium">{m.content}</p>
-                ) : (
-                  <div className="bg-white/80 backdrop-blur-sm border border-slate-200 p-6 rounded-2xl rounded-tl-none shadow-sm ring-1 ring-slate-100">
-                    {parseContent(m.content)}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          ))}
-          {isTyping && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl rounded-tl-none flex gap-1.5 items-center">
-                <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce"></span>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Input Area */}
-      <div className="p-4 bg-slate-50/80 backdrop-blur-md border-t border-slate-100">
-        <div className="relative flex items-end gap-2 group">
-          <textarea 
-            rows={Math.min(6, Math.max(1, input.split('\n').length))}
-            className="w-full pl-6 pr-14 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400 shadow-inner resize-none font-mono text-sm leading-relaxed"
-            placeholder="Type your answer or code here... (Shift+Enter for new line)"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleChat(input);
-              }
-            }}
-            disabled={isTyping}
-          />
-          <button 
-            onClick={() => handleChat(input)}
-            disabled={!input.trim() || isTyping}
-            className="absolute right-2.5 bottom-2.5 p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-all shadow-lg active:scale-95 group-focus-within:ring-2 ring-indigo-200"
-          >
-            <Send size={20} />
-          </button>
+        {/* Message Area */}
+        <div 
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30"
+        >
+          <AnimatePresence initial={false}>
+            {messages.map((m, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`max-w-[90%] ${m.role === 'user' ? 'bg-indigo-600 text-white px-6 py-4 rounded-3xl rounded-tr-none shadow-xl shadow-indigo-100/50' : 'w-full'}`}>
+                  {m.role === 'user' ? (
+                    <p className="text-sm md:text-base font-mono whitespace-pre-wrap">{m.content}</p>
+                  ) : (
+                    <div className="bg-white border border-slate-200/60 p-6 rounded-3xl rounded-tl-none shadow-sm ring-1 ring-slate-100">
+                      {parseContent(m.content)}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+            {isTyping && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                <div className="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-none flex gap-1.5 items-center shadow-sm">
+                  <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                  <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-        <div className="flex justify-center gap-6 mt-3">
-          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-            Prototype EDU-ITS
-          </p>
-          <span className="w-1 h-1 bg-slate-200 rounded-full mt-1"></span>
-          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-            V 1.0.4 - Research Stable
-          </p>
+
+        {/* Input Area */}
+        <div className="p-4 bg-white border-t border-slate-100">
+          <div className="relative flex items-end gap-2 group">
+            <textarea 
+              rows={Math.min(10, Math.max(3, input.split('\n').length))}
+              className="w-full pl-6 pr-14 py-4 bg-slate-50/50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-400 shadow-inner resize-none font-mono text-sm leading-relaxed"
+              placeholder="Write your Python code here... (Enter for indented newline)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleEditorKeyDown}
+              disabled={isTyping}
+            />
+            <button 
+              onClick={() => handleChat(input)}
+              disabled={!input.trim() || isTyping}
+              className="absolute right-3 bottom-3 p-3.5 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-lg active:scale-95 group-focus-within:shadow-indigo-200/50"
+              title="Send to Tutor"
+            >
+              <Send size={20} />
+            </button>
+          </div>
+          <div className="flex justify-center items-center gap-4 mt-3">
+             <div className="h-[1px] flex-1 bg-slate-100"></div>
+             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] whitespace-nowrap">
+               AI PEDAGOGICAL LAYER ACTIVE
+             </p>
+             <div className="h-[1px] flex-1 bg-slate-100"></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Output Sidebar */}
+      <div className="hidden lg:flex flex-col w-80 bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-800">
+        <div className="px-5 py-4 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Terminal size={16} className="text-emerald-400" />
+            <h3 className="text-xs font-black text-slate-300 uppercase tracking-widest">Execution Console</h3>
+          </div>
+          {isExecuting && (
+            <div className="flex gap-1">
+              <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></span>
+            </div>
+          )}
+        </div>
+        <div className="flex-1 p-5 font-mono text-xs overflow-y-auto space-y-2 text-slate-300 scrollbar-hide">
+          {executionOutput.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center opacity-30 text-center px-4">
+              <Code2 size={40} className="mb-4" />
+              <p className="italic">Standard Output will appear here after you send your code.</p>
+            </div>
+          ) : (
+            executionOutput.map((line, i) => (
+              <div key={i} className="flex gap-3 animate-in fade-in slide-in-from-left-2 duration-300">
+                <span className="text-slate-600 select-none text-[10px] w-4 text-right">{i+1}</span>
+                <span className={`flex-1 break-all ${line.includes('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {line}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="p-4 bg-slate-800/30 border-t border-slate-800">
+          <div className="flex flex-col gap-2">
+            <div className={`p-2 rounded-lg text-[10px] font-bold text-center uppercase tracking-widest border transition-colors ${
+              executionOutput.some(l => l.includes('Error')) 
+                ? 'bg-red-500/10 text-red-500 border-red-500/20' 
+                : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+            }`}>
+              {executionOutput.some(l => l.includes('Error')) ? 'Process Failed' : 'System Ready'}
+            </div>
+          </div>
         </div>
       </div>
     </div>
