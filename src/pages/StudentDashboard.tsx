@@ -283,19 +283,19 @@ const StudentDashboard = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 w-full flex-1 p-6">
+    <div className="flex flex-col lg:flex-row w-full flex-1 overflow-hidden bg-white">
       {/* Main Chat Area */}
-      <div className="flex flex-col flex-1 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden ring-1 ring-slate-200/50">
+      <div className="flex flex-col flex-1 bg-white overflow-hidden border-r border-slate-100 flex-grow">
         {/* Chat Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/50 backdrop-blur-md">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-md z-10">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 ring-2 ring-indigo-50">
-              <BrainCircuit size={20} />
+            <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100">
+              <BrainCircuit size={22} />
             </div>
             <div>
               <h2 className="font-bold text-slate-900 tracking-tight flex items-center gap-2">
                 Python AI Tutor
-                <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100">AI AGENT</span>
+                <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100 font-bold">AI AGENT</span>
               </h2>
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded-md ${
@@ -306,7 +306,7 @@ const StudentDashboard = () => {
                   Mastery: {mastery?.masteryLevel || 'Low'}
                 </span>
                 <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Active Analysis</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Knowledge Engineering Active</p>
               </div>
             </div>
           </div>
@@ -315,21 +315,21 @@ const StudentDashboard = () => {
         {/* Message Area */}
         <div 
           ref={scrollRef}
-          className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30"
+          className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/20"
         >
           <AnimatePresence initial={false}>
             {messages.map((m, i) => (
               <motion.div
                 key={i}
-                initial={{ opacity: 0, scale: 0.98, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[90%] ${m.role === 'user' ? 'bg-indigo-600 text-white px-6 py-4 rounded-3xl rounded-tr-none shadow-xl shadow-indigo-100/50' : 'w-full'}`}>
+                <div className={`${m.role === 'user' ? 'max-w-[80%] bg-indigo-600 text-white px-6 py-4 rounded-3xl rounded-tr-none shadow-xl shadow-indigo-100' : 'w-full max-w-[95%]'}`}>
                   {m.role === 'user' ? (
-                    <p className="text-sm md:text-base font-mono whitespace-pre-wrap">{m.content}</p>
+                    <p className="text-sm md:text-base font-mono whitespace-pre-wrap leading-relaxed">{m.content}</p>
                   ) : (
-                    <div className="bg-white border border-slate-200/60 p-6 rounded-3xl rounded-tl-none shadow-sm ring-1 ring-slate-100">
+                    <div className="bg-white border border-slate-200/60 p-8 rounded-3xl rounded-tl-none shadow-sm ring-1 ring-slate-100/50">
                       {parseContent(m.content)}
                     </div>
                   )}
@@ -338,10 +338,10 @@ const StudentDashboard = () => {
             ))}
             {isTyping && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                <div className="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-none flex gap-1.5 items-center shadow-sm">
+                <div className="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-none flex gap-2 items-center shadow-sm">
                   <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
                   <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                  <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></span>
+                  <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce"></span>
                 </div>
               </motion.div>
             )}
@@ -349,30 +349,37 @@ const StudentDashboard = () => {
         </div>
 
         {/* Input Area */}
-        <div className="p-4 bg-white border-t border-slate-100">
-          <div className="relative flex items-end gap-2 group">
+        <div className="p-6 bg-white border-t border-slate-100">
+          <div className="relative flex items-end gap-3 group">
             <textarea 
-              rows={Math.min(10, Math.max(3, input.split('\n').length))}
-              className="w-full pl-6 pr-14 py-4 bg-slate-50/50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-400 shadow-inner resize-none font-mono text-sm leading-relaxed"
-              placeholder="Write your Python code here... (Enter for indented newline)"
+              rows={Math.min(12, Math.max(4, input.split('\n').length))}
+              className="w-full pl-6 pr-16 py-5 bg-slate-50/30 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-400 shadow-inner resize-none font-mono text-sm leading-relaxed"
+              placeholder="Write your Python code here... (Enter for indented newline, Ctrl+Enter to send)"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleEditorKeyDown}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                   e.preventDefault();
+                   handleChat(input);
+                } else {
+                   handleEditorKeyDown(e);
+                }
+              }}
               disabled={isTyping}
             />
             <button 
               onClick={() => handleChat(input)}
               disabled={!input.trim() || isTyping}
-              className="absolute right-3 bottom-3 p-3.5 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-lg active:scale-95 group-focus-within:shadow-indigo-200/50"
-              title="Send to Tutor"
+              className="absolute right-4 bottom-4 p-4 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-lg active:scale-95 z-10"
+              title="Send to Tutor (Ctrl+Enter)"
             >
-              <Send size={20} />
+              <Send size={24} />
             </button>
           </div>
-          <div className="flex justify-center items-center gap-4 mt-3">
+          <div className="flex justify-center items-center gap-6 mt-4">
              <div className="h-[1px] flex-1 bg-slate-100"></div>
-             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] whitespace-nowrap">
-               AI PEDAGOGICAL LAYER ACTIVE
+             <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em] whitespace-nowrap">
+               AI PEDAGOGICAL ENGINE • V 1.0.4
              </p>
              <div className="h-[1px] flex-1 bg-slate-100"></div>
           </div>
@@ -380,44 +387,47 @@ const StudentDashboard = () => {
       </div>
 
       {/* Output Sidebar */}
-      <div className="hidden lg:flex flex-col w-96 xl:w-[450px] bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-800">
-        <div className="px-5 py-4 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Terminal size={16} className="text-emerald-400" />
-            <h3 className="text-xs font-black text-slate-300 uppercase tracking-widest">Execution Console</h3>
+      <div className="hidden lg:flex flex-col w-[35%] min-w-[400px] max-w-[600px] bg-slate-900 overflow-hidden border-l border-slate-800">
+        <div className="px-6 py-5 bg-slate-800/40 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+             <div className="p-1.5 bg-emerald-500/10 rounded-md">
+               <Terminal size={18} className="text-emerald-400" />
+             </div>
+            <h3 className="text-xs font-black text-slate-100 uppercase tracking-[0.2em]">Execution Console</h3>
           </div>
-          {isExecuting && (
-            <div className="flex gap-1">
-              <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+             {isExecuting && <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.5)]"></span>}
+             <div className="px-2 py-1 bg-slate-700/50 rounded text-[9px] font-bold text-slate-400">STDOUT</div>
+          </div>
         </div>
-        <div className="flex-1 p-5 font-mono text-xs overflow-y-auto space-y-2 text-slate-300 scrollbar-hide">
+        <div className="flex-1 p-8 font-mono text-[13px] overflow-y-auto space-y-3 text-slate-300 selection:bg-emerald-500/20 selection:text-emerald-200">
           {executionOutput.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center opacity-30 text-center px-4">
-              <Code2 size={40} className="mb-4" />
-              <p className="italic">Standard Output will appear here after you send your code.</p>
+            <div className="h-full flex flex-col items-center justify-center opacity-20 text-center px-10">
+              <Code2 size={64} className="mb-6 text-emerald-400" />
+              <p className="text-sm font-sans tracking-wide leading-relaxed">
+                Your code's standard output will appear here in real-time.<br/>
+                <span className="text-xs mt-2 block opacity-60">Ready for evaluation...</span>
+              </p>
             </div>
           ) : (
             executionOutput.map((line, i) => (
-              <div key={i} className="flex gap-3 animate-in fade-in slide-in-from-left-2 duration-300">
-                <span className="text-slate-600 select-none text-[10px] w-4 text-right">{i+1}</span>
-                <span className={`flex-1 break-all ${line.includes('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+              <div key={i} className="flex gap-4 animate-in fade-in slide-in-from-left-3 duration-500 fill-mode-both" style={{ animationDelay: `${i * 50}ms` }}>
+                <span className="text-slate-600 select-none text-[11px] w-6 text-right mt-1">{i+1}</span>
+                <span className={`flex-1 break-all leading-6 ${line.includes('Error') ? 'text-rose-400 bg-rose-400/5 px-2 rounded -mx-2' : 'text-emerald-400 font-medium'}`}>
                   {line}
                 </span>
               </div>
             ))
           )}
         </div>
-        <div className="p-4 bg-slate-800/30 border-t border-slate-800">
-          <div className="flex flex-col gap-2">
-            <div className={`p-2 rounded-lg text-[10px] font-bold text-center uppercase tracking-widest border transition-colors ${
-              executionOutput.some(l => l.includes('Error')) 
-                ? 'bg-red-500/10 text-red-500 border-red-500/20' 
-                : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-            }`}>
-              {executionOutput.some(l => l.includes('Error')) ? 'Process Failed' : 'System Ready'}
-            </div>
+        <div className="p-6 bg-slate-800/25 border-t border-slate-800">
+          <div className={`p-3 rounded-xl text-xs font-black text-center uppercase tracking-[0.25em] border transition-all duration-500 shadow-2xl ${
+            executionOutput.some(l => l.includes('Error')) 
+              ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 shadow-rose-900/10' 
+              : executionOutput.length > 0 ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shadow-emerald-900/10'
+              : 'bg-slate-700/20 text-slate-500 border-slate-700/30'
+          }`}>
+            {executionOutput.some(l => l.includes('Error')) ? 'Process Terminated' : executionOutput.length > 0 ? 'Success • Process Exited' : 'System Ready'}
           </div>
         </div>
       </div>
