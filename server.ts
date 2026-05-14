@@ -83,9 +83,10 @@ const connectDB = async () => {
     
     // Seed basic pedagogical rules if empty
     const ruleCount = await PedagogicalRule.countDocuments();
-    if (ruleCount < 5) {
+    if (ruleCount < 6) {
       const initialRules = [
-        { id: 'greeting', pattern: '^(hi|hello|hey|ready|begin|start|morning|afternoon|evening).*', type: 'regex', diagnosis: 'General Greeting', explanation: 'Welcome to the Python Intelligent Tutoring System! I am here to help you learn Python step-by-step.', hint: 'Try writing a simple print statement to start, like: print("Hello World")', priority: 100 },
+        { id: 'greeting', pattern: '.*\\b(hi|hello|hey|ready|begin|start|morning|afternoon|evening)\\b.*', type: 'regex', diagnosis: 'General Greeting', explanation: 'Welcome to the Python Intelligent Tutoring System! I am here to help you learn Python step-by-step. What would you like to build today?', hint: 'Try writing a simple print statement to start, like: print("Hello World")', priority: 100 },
+        { id: 'multiple_statements', pattern: '[a-zA-Z_]\\w*\\s*=\\s*[^\\n;]+\\s+[a-zA-Z_]\\w*\\s*=', type: 'regex', diagnosis: 'Syntax Error (Multiple Statements)', explanation: 'You seem to have multiple statements on the same line without a separator. In Python, each statement should typically be on its own line, or separated by a semicolon (;).', hint: 'Try putting "b = 33" on a new line after "a = 33".', priority: 11 },
         { id: 'missing_colon', pattern: '(if|for|while|def)(?!.*:).*$', type: 'regex', diagnosis: 'Syntax Error (Missing Colon)', explanation: 'In Python, control structures like if-statements, for-loops, and function definitions MUST end with a colon (:).', hint: 'Look at the end of your conditional or loop line. Is there a colon there?', priority: 10 },
         { id: 'single_equals', pattern: 'if.*[^=]=[^=].*:', type: 'regex', diagnosis: 'Logical/Syntax Error (Assignment vs Comparison)', explanation: 'You are using a single "=" inside an if-statement. In Python, "=" is for assigning values, but "==" is used to compare them.', hint: 'Check your comparison inside the if-statement. Use double equals (==) to check for equality.', priority: 9 },
         { id: 'print_no_parens', pattern: 'print ["\'].*["\']', type: 'regex', diagnosis: 'Syntax Error (Python 3 Print)', explanation: 'In Python 3, print is a function and requires parentheses around its arguments.', hint: 'Try wrapping what you want to output in parentheses, like print("hello").', priority: 8 },
@@ -123,46 +124,74 @@ const getOpenAIClient = (provider: string) => {
 
 async function getAIResponse(message: string, userMastery: any) {
   const provider = process.env.TUTOR_AI_PROVIDER || 'gemini';
+  const apiKey = process.env.GEMINI_API_KEY;
+
   const systemPrompt = `
 SYSTEM ROLE: You are an Intelligent Tutoring System (ITS) for Python.
-TARGET LEARNERS: Beginners.
+TARGET LEARNERS: Beginners learning Python programming.
 LEARNER MODEL: Current Mastery=${userMastery.masteryLevel}, Recent Mistakes=${userMastery.repeatedMistakes?.join(', ') || 'None'}.
 
-RULES:
-1. Diagnose the learner’s error (Syntax, Logical, or Conceptual).
-2. Explain WHY it is wrong.
-3. Provide a scaffolded hint (no direct solution).
-4. Use supportive language.
+CORE TASKS:
+1. Diagnose any errors (Syntax, Logical, Conceptual) in code provided.
+2. Explain WHY the error persists according to Python language rules.
+3. Provide a helpful hint or scaffolded advice (DO NOT provide direct code solutions).
+4. Maintain a supportive, encouraging, and pedagogical tone.
 
 RESPONSE FORMAT (MANDATORY):
-Diagnosis: (Analysis)
-Explanation: (The 'why')
-Hint: (Scaffold)
-[METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string or null"}
+Diagnosis: <Text>
+Explanation: <Detailed Text>
+Hint: <Actionable Scaffold>
+[METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string_id_or_null"}
 `;
 
-  if (provider === 'rule-only') return null;
+  if (provider === 'rule-only') {
+    console.log('[AI] Rule-only mode active');
+    return null;
+  }
 
   try {
-    if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', systemInstruction: systemPrompt });
-      const result = await model.generateContent(message);
-      return result.response.text();
+    if (provider === 'gemini') {
+      if (!apiKey) {
+        console.error('[AI] Gemini API Key missing from environment');
+        return null;
+      }
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-1.5-flash', 
+        systemInstruction: systemPrompt 
+      });
+      
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: message }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1024,
+        }
+      });
+      
+      const text = result.response.text();
+      console.log('[AI] Gemini Response Success');
+      return text;
     } else if (['groq', 'perplexity', 'deepseek'].includes(provider)) {
       const client = getOpenAIClient(provider);
-      if (!client) return null;
+      if (!client) {
+        console.error(`[AI] Client for ${provider} could not be initialized`);
+        return null;
+      }
       let model = 'llama3-8b-8192';
       if (provider === 'perplexity') model = 'sonar-small-online';
       if (provider === 'deepseek') model = 'deepseek-chat';
 
       const response = await client.chat.completions.create({
         model,
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: message }]
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ]
       });
       return response.choices[0].message.content;
     }
   } catch (e: any) {
-    console.error(`AI Provider (${provider}) Error:`, e.message);
+    console.error(`[AI] Provider (${provider}) Error:`, e.message);
     return null;
   }
   return null;
@@ -269,7 +298,6 @@ async function startServer() {
         } else {
           const aiResponse = await getAIResponse(studentCode, userMastery);
           if (aiResponse) {
-            // Robust metadata extraction (supports multi-line and different positions)
             const metaRegex = /\[METADATA\]:\s*(\{.*\})/;
             const metaMatch = aiResponse.match(metaRegex);
             responseText = aiResponse.replace(metaRegex, '').trim();
@@ -277,28 +305,28 @@ async function startServer() {
             if (metaMatch) {
               try {
                 const p = JSON.parse(metaMatch[1]);
-                metadata.masteryUpdate = p.masteryUpdate || "Low";
-                metadata.identifiedMistake = p.identifiedMistake || "ai";
-                
-                // Better diagnosis/explanation/hint extraction for cache
-                const diag = responseText.match(/Diagnosis:\s*(.*?)(?=\nExplanation:|\nHint:|$)/si)?.[1] || 'AI Analysis';
-                const expl = responseText.match(/Explanation:\s*(.*?)(?=\nHint:|$)/si)?.[1] || responseText;
-                const hint = responseText.match(/Hint:\s*(.*)/si)?.[1] || 'Check your code logic again.';
-
-                await ResponseCache.create({
-                  problemId: problemId || 'general', 
-                  studentCode, 
-                  diagnosis: diag.trim(),
-                  explanation: expl.trim(),
-                  hint: hint.trim(),
-                  masteryUpdate: metadata.masteryUpdate
-                });
+                metadata.masteryUpdate = p.masteryUpdate || userMastery.masteryLevel;
+                metadata.identifiedMistake = p.identifiedMistake || "ai_generated";
               } catch (e) {
-                console.warn('Metadata JSON parse failed', e);
+                console.warn('[AI] Metadata parse failed');
               }
             }
+            
+            // Cache parsing for future optimization
+            const diag = responseText.match(/Diagnosis:\s*(.*?)(?=\nExplanation:|\nHint:|$)/si)?.[1] || 'Code Analysis';
+            const expl = responseText.match(/Explanation:\s*(.*?)(?=\nHint:|$)/si)?.[1] || responseText;
+            const hint = responseText.match(/Hint:\s*(.*)/si)?.[1] || 'Review your code logic and try again.';
+
+            await ResponseCache.create({
+              problemId: problemId || 'general',
+              studentCode,
+              diagnosis: diag.trim(),
+              explanation: expl.trim(),
+              hint: hint.trim(),
+              masteryUpdate: metadata.masteryUpdate
+            });
           } else {
-            responseText = "Diagnosis: System Guidance\nExplanation: I'm currently unable to access the full AI reasoning engine, but I can still check your code for common patterns.\nHint: Try simplified code blocks or check your network connection.";
+            responseText = "Diagnosis: Intelligent Tutoring System Guidance\nExplanation: My full reasoning engine is currently unavailable, but I suggest checking your code for common Python syntax patterns like indentation, colons, or parentheses.\nHint: If you're stuck, try breaking your code into smaller segments.";
           }
         }
       }
