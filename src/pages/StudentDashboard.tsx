@@ -91,64 +91,83 @@ const StudentDashboard = () => {
     setIsExecuting(true);
     setExecutionOutput([]);
     
-    // Simple simulation delay
     setTimeout(() => {
       const logs: string[] = [];
       const lines = code.split('\n');
       const variables: Record<string, any> = {};
+      
+      let skipUntilIndent: number | null = null;
+      let blockChainFinished = false; // Tracks if an if/elif in a chain was already satisfied
+      let lastBlockIndent = -1;
 
       try {
-        lines.forEach(line => {
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
           const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('#')) return;
+          if (!trimmed || trimmed.startsWith('#')) continue;
 
-          // Check for syntax errors that prevent execution in "Tutor" mode
-          // 1. Multiple assignments on one line without separator
-          if (/[a-zA-Z_]\w*\s*=\s*[^=;]+\s+[a-zA-Z_]\w*\s*=/.test(trimmed)) {
-            throw new Error('SyntaxError: multiple statements on one line (seen near b = 33)');
+          // Calculate current indentation
+          const currentIndent = line.match(/^\s*/)?.[0].length || 0;
+
+          // If we are currently skipping a block (e.g. failed IF)
+          if (skipUntilIndent !== null) {
+            if (currentIndent > skipUntilIndent) {
+              continue; // Still inside the skipped block
+            } else {
+              skipUntilIndent = null; // We've exited the block
+            }
+          }
+
+          // Handle IF / ELIF / ELSE
+          const ifMatch = trimmed.match(/^if\s+(.*):$/);
+          const elifMatch = trimmed.match(/^elif\s+(.*):$/);
+          const elseMatch = trimmed.match(/^else:$/);
+
+          if (ifMatch || elifMatch || elseMatch) {
+            // If it's a new IF, reset the chain
+            if (ifMatch) {
+              blockChainFinished = false;
+              lastBlockIndent = currentIndent;
+            }
+
+            let conditionMet = false;
+            if (ifMatch && !blockChainFinished) {
+              conditionMet = evaluateCondition(ifMatch[1], variables);
+            } else if (elifMatch && !blockChainFinished) {
+              conditionMet = evaluateCondition(elifMatch[1], variables);
+            } else if (elseMatch && !blockChainFinished) {
+              conditionMet = true;
+            }
+
+            if (conditionMet) {
+              blockChainFinished = true;
+              // Continue to next line (which should be indented)
+            } else {
+              skipUntilIndent = currentIndent;
+            }
+            continue;
+          }
+
+          // Handle assignments
+          const assignMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*=\s*(.*)$/);
+          if (assignMatch) {
+            const name = assignMatch[1];
+            const valExpr = assignMatch[2].trim();
+            variables[name] = safelyEvaluate(valExpr, variables);
+            continue;
           }
 
           // Handle print
           const printMatch = trimmed.match(/^print\((.*)\)$/);
           if (printMatch) {
             const content = printMatch[1].trim();
-            // Try to resolve variable or string
-            if ((content.startsWith('"') && content.endsWith('"')) || (content.startsWith("'") && content.endsWith("'"))) {
-              logs.push(content.slice(1, -1));
-            } else if (variables[content] !== undefined) {
-              logs.push(String(variables[content]));
-            } else {
-              // Basic expression eval simulation
-              try {
-                // Replace python vars with their values for simple math
-                let evalExpr = content;
-                Object.keys(variables).forEach(v => {
-                  evalExpr = evalExpr.replace(new RegExp(`\\b${v}\\b`, 'g'), variables[v]);
-                });
-                logs.push(String(eval(evalExpr)));
-              } catch {
-                logs.push(`NameError: name '${content}' is not defined`);
-              }
-            }
-            return;
+            logs.push(String(safelyEvaluate(content, variables)));
+            continue;
           }
-
-          // Handle assignment
-          const assignMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*=\s*(.*)$/);
-          if (assignMatch) {
-            const name = assignMatch[1];
-            const valExpr = assignMatch[2].trim();
-            try {
-               // Simple eval for numbers/strings
-               variables[name] = eval(valExpr.replace(/'/g, '"'));
-            } catch {
-               variables[name] = valExpr;
-            }
-          }
-        });
+        }
 
         if (logs.length === 0 && code.trim()) {
-          logs.push("(Program exited with no output)");
+           logs.push("(Program exited with no output)");
         }
       } catch (err: any) {
         logs.push(`\u001b[31m${err.message}\u001b[0m`);
@@ -157,6 +176,51 @@ const StudentDashboard = () => {
       setExecutionOutput(logs);
       setIsExecuting(false);
     }, 400);
+  };
+
+  // Helper dedicated to evaluating simple Python-like conditions
+  const evaluateCondition = (expr: string, vars: Record<string, any>): boolean => {
+    try {
+      // Basic normalization of Python operators to JS
+      let jsExpr = expr
+        .replace(/\sand\s/g, ' && ')
+        .replace(/\sor\s/g, ' || ')
+        .replace(/\snot\s/g, ' ! ')
+        .replace(/True/g, 'true')
+        .replace(/False/g, 'false');
+
+      // Inject variables
+      Object.keys(vars).forEach(v => {
+        const regex = new RegExp(`\\b${v}\\b`, 'g');
+        const val = typeof vars[v] === 'string' ? `"${vars[v]}"` : vars[v];
+        jsExpr = jsExpr.replace(regex, val);
+      });
+
+      return Boolean(eval(jsExpr));
+    } catch {
+      return false;
+    }
+  };
+
+  const safelyEvaluate = (expr: string, vars: Record<string, any>): any => {
+    try {
+      // Handles strings
+      if ((expr.startsWith('"') && expr.endsWith('"')) || (expr.startsWith("'") && expr.endsWith("'"))) {
+        return expr.slice(1, -1);
+      }
+      
+      // Inject variables for evaluation
+      let evalExpr = expr;
+      Object.keys(vars).forEach(v => {
+        const regex = new RegExp(`\\b${v}\\b`, 'g');
+        const val = typeof vars[v] === 'string' ? `"${vars[v]}"` : vars[v];
+        evalExpr = evalExpr.replace(regex, val);
+      });
+
+      return eval(evalExpr);
+    } catch {
+      return expr; // Fallback to raw string if eval fails
+    }
   };
 
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
