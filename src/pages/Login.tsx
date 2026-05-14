@@ -19,7 +19,16 @@ const LoginPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+      
+      let data;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || 'Server returned an invalid response');
+      }
+
       if (res.ok) {
         login(data.user);
         navigate('/');
