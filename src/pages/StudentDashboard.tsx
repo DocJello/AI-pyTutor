@@ -81,18 +81,77 @@ const StudentDashboard = () => {
   };
 
   const parseContent = (content: string) => {
-    const sections = content.split('\n');
-    return sections.map((section, idx) => {
-      const [label, ...rest] = section.split(': ');
-      const text = rest.join(': ');
+    const lines = content.split('\n');
+    const sections: { label: string; text: string }[] = [];
+    let currentSection: { label: string; text: string } | null = null;
 
-      if (label === 'Diagnosis') return <div key={idx} className="mb-4 p-3 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg"><div className="flex items-center gap-2 text-blue-800 font-bold text-xs mb-1 uppercase tracking-wider"><Info size={14}/> Diagnosis</div><p className="text-sm text-blue-900">{text}</p></div>;
-      if (label === 'Explanation') return <div key={idx} className="mb-4 text-slate-700 leading-relaxed"><h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Pedagogical Explainer</h4><p className="text-base font-medium">{text || section}</p></div>;
-      if (label === 'Hint') return <div key={idx} className="mb-4 p-3 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg"><div className="flex items-center gap-2 text-amber-800 font-bold text-xs mb-1 uppercase tracking-wider"><Sparkles size={14}/> Hint</div><p className="text-sm text-amber-900 italic font-medium">{text}</p></div>;
-      if (label === 'Example') return <div key={idx} className="mb-4 p-4 bg-slate-900 rounded-xl font-mono text-sm text-slate-100 shadow-inner overflow-x-auto"><code>{text || section.replace('Example:', '').trim()}</code></div>;
-      if (label === 'Recommendation') return <div key={idx} className="mt-6 mb-4 p-4 bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-xl shadow-sm"><div className="flex items-center gap-2 text-indigo-800 font-bold text-xs mb-2 uppercase tracking-wider"><ArrowRight size={14}/> Recommendation</div><p className="text-sm text-indigo-900 font-semibold">{text}</p></div>;
+    lines.forEach(line => {
+      const match = line.match(/^(Diagnosis|Explanation|Hint|Example|Recommendation|Summary):\s*(.*)/i);
+      if (match) {
+        if (currentSection) sections.push(currentSection);
+        currentSection = { label: match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase(), text: match[2] };
+      } else if (currentSection) {
+        currentSection.text += (currentSection.text ? '\n' : '') + line;
+      } else if (line.trim()) {
+        sections.push({ label: 'General', text: line });
+      }
+    });
+    if (currentSection) sections.push(currentSection);
+
+    return sections.map((sec, idx) => {
+      const { label, text } = sec;
+
+      if (label === 'Diagnosis') return (
+        <div key={idx} className="mb-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded-r-xl shadow-sm">
+          <div className="flex items-center gap-2 text-blue-800 font-bold text-xs mb-2 uppercase tracking-widest">
+            <Info size={14}/> Diagnosis
+          </div>
+          <p className="text-sm md:text-base text-blue-900 font-medium leading-relaxed">{text}</p>
+        </div>
+      );
       
-      return <p key={idx} className="mb-2 text-slate-600 font-sans">{section}</p>;
+      if (label === 'Explanation') return (
+        <div key={idx} className="mb-6 mt-4">
+          <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+            <BrainCircuit size={14} className="text-indigo-400" /> Pedagogical Explainer
+          </h4>
+          <div className="text-slate-700 leading-relaxed text-sm md:text-base space-y-2">
+            {text.split('\n').map((para, i) => <p key={i}>{para}</p>)}
+          </div>
+        </div>
+      );
+      
+      if (label === 'Hint') return (
+        <div key={idx} className="mb-4 p-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-xl shadow-sm border border-amber-100/50">
+          <div className="flex items-center gap-2 text-amber-800 font-bold text-xs mb-2 uppercase tracking-widest">
+            <Sparkles size={14}/> Hint
+          </div>
+          <p className="text-sm md:text-base text-amber-900 italic font-semibold leading-relaxed">{text}</p>
+        </div>
+      );
+      
+      if (label === 'Example') return (
+        <div key={idx} className="mb-6 p-5 bg-slate-900 rounded-2xl font-mono text-sm text-indigo-100 shadow-xl border border-slate-800 overflow-x-auto ring-1 ring-white/10">
+          <div className="flex items-center gap-2 text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-3 border-b border-slate-800 pb-2">
+            Code Example
+          </div>
+          <code className="whitespace-pre">{text}</code>
+        </div>
+      );
+      
+      if (label === 'Recommendation') return (
+        <div key={idx} className="mt-8 mb-4 p-5 bg-gradient-to-br from-indigo-50/50 to-violet-50/50 border border-indigo-100/50 rounded-2xl shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-3 opacity-10">
+            <ArrowRight size={40} className="text-indigo-600" />
+          </div>
+          <div className="flex items-center gap-2 text-indigo-800 font-black text-xs mb-3 uppercase tracking-[0.15em]">
+             Next Step
+          </div>
+          <p className="text-sm md:text-base text-indigo-900 font-bold leading-relaxed">{text}</p>
+        </div>
+      );
+      
+      return <p key={idx} className="mb-4 text-slate-600 font-sans leading-relaxed text-sm md:text-base">{text}</p>;
     });
   };
 
