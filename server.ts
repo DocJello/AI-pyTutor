@@ -6,6 +6,9 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 
+import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || 'its-prototype-secret-key';
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -121,6 +124,28 @@ const connectDB = async () => {
 };
 
 // Initialize Rule Engine (No AI needed)
+// Initialize AI Clients
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'fake-key' });
+
+const getOpenAIClient = (provider: string) => {
+  let apiKey = '';
+  let baseURL = '';
+
+  if (provider === 'groq') {
+    apiKey = process.env.GROQ_API_KEY || '';
+    baseURL = 'https://api.groq.com/openai/v1';
+  } else if (provider === 'perplexity') {
+    apiKey = process.env.PERPLEXITY_API_KEY || '';
+    baseURL = 'https://api.perplexity.ai';
+  } else if (provider === 'deepseek') {
+    apiKey = process.env.DEEPSEEK_API_KEY || '';
+    baseURL = 'https://api.deepseek.com';
+  }
+  
+  if (!apiKey) return null;
+  return new OpenAI({ apiKey, baseURL });
+};
+
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
@@ -254,58 +279,162 @@ const PORT = 3000;
     }
   });
 
-  // --- ITS Tutoring Engine (Rule-Based) ---
-  app.post('/api/tutoring/chat', authenticateToken, async (req: any, res) => {
-    console.log('--- POST /api/tutoring/chat (Rule-Based) ---');
-    const { message, problemId } = req.body;
-    const userId = req.user.id;
-    const studentCode = message.trim();
+  // --- Tutoring Logic Helpers ---
+  async function getAIResponse(message: string, userMastery: any) {
+    const provider = process.env.TUTOR_AI_PROVIDER || 'gemini';
+    const systemPrompt = `
+SYSTEM ROLE: You are an Intelligent Tutoring System (ITS) for Python.
+TARGET LEARNERS: Beginners.
+LEARNER MODEL: Current Mastery=${userMastery.masteryLevel}, Recent Mistakes=${userMastery.repeatedMistakes?.join(', ') || 'None'}.
+
+RULES:
+1. Diagnose the learner’s error (Syntax, Logical, or Conceptual).
+2. Explain WHY it is wrong.
+3. Provide a scaffolded hint (no direct solution).
+4. Use supportive language.
+
+RESPONSE FORMAT (MANDATORY):
+Diagnosis: (Analysis)
+Explanation: (The 'why')
+Hint: (Scaffold)
+[METADATA]: {"masteryUpdate": "Low/Medium/High", "identifiedMistake": "string or null"}
+`;
+
+    if (provider === 'rule-only') return null;
 
     try {
-      // 1. Fetch User Mastery for history
-      let userMastery = await Mastery.findOne({ userId });
-      if (!userMastery) userMastery = new Mastery({ userId });
+      if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+        const response = await (ai as any).models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: [{ role: 'user', parts: [{ text: message }] }],
+          config: {
+            systemInstruction: systemPrompt
+          }
+        });
+        return response.text || '';
+      } else if (provider === 'groq' || provider === 'perplexity' || provider === 'deepseek') {
+        const client = getOpenAIClient(provider);
+        if (!client) throw new Error(`API Key for ${provider} is missing.`);
+        
+        let model = 'llama3-8b-8192'; // Standard Groq free model
+        if (provider === 'perplexity') model = 'sonar-small-online';
+        if (provider === 'deepseek') model = 'deepseek-chat';
 
-      // 2. Find matching pedagogical rules
+        const response = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message }
+          ]
+        });
+        return response.choices[0].message.content;
+      }
+    } catch (e: any) {
+      console.error(`AI Provider (${provider}) Error:`, e.message);
+      return null;
+    }
+    return null;
+  }
+
+  // --- ITS Tutoring Engine ---
+  app.post('/api/tutoring/chat', authenticateToken, async (req: any, res) => {
+    const { message, problemId } = req.body;
+    const userId = req.user.id;
+    const studentCode = (message || '').trim();
+
+    if (!studentCode) {
+      return res.status(400).json({ error: 'Message content is required' });
+    }
+
+    try {
+      // 1. Fetch/Create User Mastery
+      let userMastery = await Mastery.findOne({ userId });
+      if (!userMastery) {
+        userMastery = new Mastery({ userId });
+        await userMastery.save();
+      }
+
+      // 2. Check Static Rules (Free & Instant)
       const rules = await PedagogicalRule.find().sort({ priority: -1 });
       let matchedRule = null;
 
       for (const rule of rules) {
-        if (rule.type === 'regex') {
-          const regex = new RegExp(rule.pattern, 'm');
-          if (regex.test(studentCode)) {
-            matchedRule = rule;
-            break;
+        if (!rule.pattern) continue;
+        try {
+          if (rule.type === 'regex') {
+            const regex = new RegExp(rule.pattern, 'm');
+            if (regex.test(studentCode)) { matchedRule = rule; break; }
+          } else if (rule.type === 'keyword') {
+            if (studentCode.includes(rule.pattern)) { matchedRule = rule; break; }
           }
-        } else if (rule.type === 'keyword') {
-          if (studentCode.includes(rule.pattern)) {
-            matchedRule = rule;
-            break;
+        } catch (re) { console.error("Regex eval error:", re); }
+      }
+
+      let responseText = "";
+      let metadata = { masteryUpdate: userMastery.masteryLevel || "Low", identifiedMistake: "unknown" };
+
+      if (matchedRule) {
+        console.log(`[ITS] Rule Match: ${matchedRule.id}`);
+        responseText = `Diagnosis: ${matchedRule.diagnosis}\nExplanation: ${matchedRule.explanation}\nHint: ${matchedRule.hint}`;
+        metadata = { masteryUpdate: "Medium", identifiedMistake: matchedRule.id };
+      } else {
+        // 3. Check Response Cache (if someone else already asked this)
+        const cached = await ResponseCache.findOne({ 
+          problemId: problemId || 'general', 
+          studentCode 
+        });
+
+        if (cached && !cached.isUnknown) {
+          console.log(`[ITS] Cache Hit`);
+          responseText = `Diagnosis: ${cached.diagnosis}\nExplanation: ${cached.explanation}\nHint: ${cached.hint}`;
+          metadata.masteryUpdate = cached.masteryUpdate || "Low";
+        } else {
+          // 4. Call AI (Gemini/Perplexity/DeepSeek)
+          console.log(`[ITS] Calling AI Provider...`);
+          const aiResponse = await getAIResponse(studentCode, userMastery);
+
+          if (aiResponse) {
+            const metadataMatch = aiResponse.match(/\[METADATA\]: (.*)/);
+            responseText = aiResponse.replace(/\[METADATA\]: .*/, '').trim();
+            
+            if (metadataMatch) {
+              try {
+                const parsed = JSON.parse(metadataMatch[1]);
+                metadata.masteryUpdate = parsed.masteryUpdate || "Low";
+                metadata.identifiedMistake = parsed.identifiedMistake || "ai_generated";
+
+                // Update Cache
+                const diagnosis = responseText.match(/Diagnosis: (.*)/s)?.[1]?.split('\n')[0] || '';
+                const explanation = responseText.match(/Explanation: (.*)/s)?.[1]?.split('\n')[0] || '';
+                const hint = responseText.match(/Hint: (.*)/s)?.[1]?.split('\n')[0] || '';
+
+                await ResponseCache.create({
+                  problemId: problemId || 'general',
+                  studentCode,
+                  diagnosis,
+                  explanation,
+                  hint,
+                  masteryUpdate: metadata.masteryUpdate,
+                  isUnknown: false
+                });
+              } catch (e) { console.error("Metadata Parse Error", e); }
+            }
+          } else {
+            // 5. Fallback if AI fails or Rule-Only
+            console.log(`[ITS] Fallback guidance`);
+            responseText = `Diagnosis: Pattern Unknown\nExplanation: I couldn't identify a specific error pattern in your code immediately.\nHint: Re-read the instructions. Common issues include typos in variable names or misplaced indentation.`;
+            
+            // Log as unknown for teacher review
+            await ResponseCache.updateOne(
+              { problemId: problemId || 'general', studentCode },
+              { $set: { isUnknown: true } },
+              { upsert: true }
+            );
           }
         }
       }
 
-      let content = "";
-      let metadata = { masteryUpdate: "Low", identifiedMistake: "unknown" };
-
-      if (matchedRule) {
-        console.log(`Matched Rule: ${matchedRule.id}`);
-        content = `Diagnosis: ${matchedRule.diagnosis}\nExplanation: ${matchedRule.explanation}\nHint: ${matchedRule.hint}`;
-        metadata = { masteryUpdate: "Medium", identifiedMistake: matchedRule.id };
-      } else {
-        // Generic response if no pattern matched
-        console.log("No specific rule matched. Providing generic guidance.");
-        content = `Diagnosis: Unidentified Pattern\nExplanation: I see your submission, but I couldn't find a specific common error pattern. \nHint: Read the problem description carefully. Check for typos, indentation, or variable names. If you're stuck, try breaking the problem into smaller parts!`;
-        
-        // Log unknown error for teachers to review
-        await ResponseCache.create({
-          problemId: problemId || 'general',
-          studentCode,
-          isUnknown: true
-        });
-      }
-
-      // Update Mastery/History
+      // Update User Mastery State
       userMastery.masteryLevel = metadata.masteryUpdate;
       if (metadata.identifiedMistake && !userMastery.repeatedMistakes.includes(metadata.identifiedMistake)) {
         userMastery.repeatedMistakes.push(metadata.identifiedMistake);
@@ -317,10 +446,11 @@ const PORT = 3000;
       });
       await userMastery.save();
 
-      res.json({ content, isCached: !!matchedRule });
+      res.json({ content: responseText, provider: process.env.TUTOR_AI_PROVIDER || 'local' });
+
     } catch (error: any) {
-      console.error('Tutoring Engine Error:', error);
-      res.status(500).json({ error: 'Internal Tutoring Error' });
+      console.error('ITS Controller Error:', error);
+      res.status(500).json({ error: 'Tutoring system encountered an internal conflict. Please refresh.' });
     }
   });
 
