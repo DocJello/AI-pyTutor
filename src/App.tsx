@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, User, LogOut, LayoutDashboard, BrainCircuit, GraduationCap, Settings, Shield } from 'lucide-react';
 
@@ -59,7 +59,7 @@ const Navbar = () => {
 
   return (
     <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
             <div className="bg-indigo-600 p-2 rounded-lg text-white">
@@ -145,7 +145,19 @@ const ProtectedRoute = () => {
     </div>
   );
   if (!user) return <Navigate to="/login" replace />;
-  return <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"><motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}><Routes><Route index element={<DashboardRedirect />} /><Route path="student/*" element={<StudentDashboard />} /><Route path="teacher/*" element={<TeacherDashboard />} /><Route path="admin/*" element={<AdminDashboard />} /></Routes></motion.div></div>;
+  return (
+    <div className="w-full min-h-[calc(100vh-64px)] flex flex-col">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        exit={{ opacity: 0, y: -20 }} 
+        transition={{ duration: 0.3 }} 
+        className="flex-1 w-full flex flex-col"
+      >
+        <Outlet />
+      </motion.div>
+    </div>
+  );
 };
 
 // Corrected ProtectedRoute to use <Outlet /> pattern or just simpler wrapping
