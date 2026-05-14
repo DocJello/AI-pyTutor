@@ -161,14 +161,18 @@ const PORT = 3000;
   // --- Auth Middleware ---
   const authenticateToken = (req: any, res: any, next: any) => {
     const token = req.cookies.token;
-    if (!token) return res.status(401).json({ error: 'Access denied' });
+    if (!token) {
+      console.warn('[AUTH] Missing token cookie');
+      return res.status(401).json({ error: 'Access denied' });
+    }
 
     try {
       const verified = jwt.verify(token, JWT_SECRET);
       req.user = verified;
       next();
     } catch (err) {
-      res.status(400).json({ error: 'Invalid token' });
+      console.error('[AUTH] Token verification failed:', err);
+      res.status(401).json({ error: 'Invalid or expired session' });
     }
   };
 
@@ -218,8 +222,13 @@ const PORT = 3000;
       const validPass = await bcrypt.compare(password, user.password);
       if (!validPass) return res.status(400).json({ error: 'Invalid password' });
 
-      const token = jwt.sign({ id: user._id, email: user.email, role: user.role, name: user.name }, JWT_SECRET);
-      res.cookie('token', token, { httpOnly: true });
+      const token = jwt.sign({ id: user._id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '24h' });
+      res.cookie('token', token, { 
+        httpOnly: true, 
+        secure: true, 
+        sameSite: 'none',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
       res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
