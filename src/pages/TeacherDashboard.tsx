@@ -92,7 +92,7 @@ const TeacherDashboard = () => {
         
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold">
+            <thead className="bg-slate-50 text-slate-600 text-sm uppercase tracking-wider font-bold">
               <tr>
                 <th className="px-6 py-4">Student</th>
                 <th className="px-6 py-4">Current Mastery</th>
@@ -110,13 +110,13 @@ const TeacherDashboard = () => {
                         <UserIcon size={20} />
                       </div>
                       <div>
-                        <p className="font-bold text-slate-900 text-sm">{student.name}</p>
-                        <p className="text-slate-400 text-xs">{student.email}</p>
+                        <p className="font-bold text-slate-900 text-base">{student.name}</p>
+                        <p className="text-slate-400 text-sm">{student.email}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getMasteryColor(student.mastery.masteryLevel)}`}>
+                    <span className={`px-3 py-1.5 rounded-full text-sm font-bold border ${getMasteryColor(student.mastery.masteryLevel)}`}>
                       {student.mastery.masteryLevel || 'N/A'}
                     </span>
                   </td>
@@ -124,7 +124,7 @@ const TeacherDashboard = () => {
                     <div className="flex flex-wrap gap-1">
                       {student.mastery.repeatedMistakes?.length > 0 ? (
                         student.mastery.repeatedMistakes.map((m, i) => (
-                          <span key={i} className="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded font-medium border border-red-100">
+                          <span key={i} className="text-xs bg-red-50 text-red-600 px-2.5 py-1 rounded-md font-bold border border-red-100">
                             {m}
                           </span>
                         ))
@@ -140,7 +140,7 @@ const TeacherDashboard = () => {
                         style={{ width: `${student.mastery.history?.length * 10 || 0}%` }}
                       ></div>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1 font-bold">{student.mastery.history?.length || 0} interactions</p>
+                    <p className="text-xs text-slate-400 mt-1.5 font-bold">{student.mastery.history?.length || 0} interactions</p>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button className="text-slate-400 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-slate-100">
