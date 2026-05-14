@@ -19,7 +19,16 @@ const RegisterPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, role }),
       });
-      const data = await res.json();
+      
+      let data;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || 'Server returned an invalid response');
+      }
+
       if (res.ok) {
         navigate('/login');
       } else {
