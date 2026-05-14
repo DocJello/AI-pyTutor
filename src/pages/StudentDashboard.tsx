@@ -218,26 +218,29 @@ const StudentDashboard = () => {
 
       {/* Input Area */}
       <div className="p-4 bg-slate-50/80 backdrop-blur-md border-t border-slate-100">
-        <form 
-          onSubmit={(e) => { e.preventDefault(); handleChat(input); }}
-          className="relative flex items-center group"
-        >
-          <input 
-            type="text"
-            className="w-full pl-6 pr-14 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400 shadow-inner"
-            placeholder="Type your answer or code here..."
+        <div className="relative flex items-end gap-2 group">
+          <textarea 
+            rows={Math.min(6, Math.max(1, input.split('\n').length))}
+            className="w-full pl-6 pr-14 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400 shadow-inner resize-none font-mono text-sm leading-relaxed"
+            placeholder="Type your answer or code here... (Shift+Enter for new line)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleChat(input);
+              }
+            }}
             disabled={isTyping}
           />
           <button 
-            type="submit"
+            onClick={() => handleChat(input)}
             disabled={!input.trim() || isTyping}
-            className="absolute right-2.5 p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-all shadow-lg active:scale-95 group-focus-within:ring-2 ring-indigo-200"
+            className="absolute right-2.5 bottom-2.5 p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-all shadow-lg active:scale-95 group-focus-within:ring-2 ring-indigo-200"
           >
             <Send size={20} />
           </button>
-        </form>
+        </div>
         <div className="flex justify-center gap-6 mt-3">
           <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
             Prototype EDU-ITS
