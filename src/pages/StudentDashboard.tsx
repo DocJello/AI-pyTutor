@@ -15,6 +15,7 @@ const StudentDashboard = () => {
   const [mastery, setMastery] = useState<any>(null);
   const [executionOutput, setExecutionOutput] = useState<string[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   
@@ -347,7 +348,88 @@ const StudentDashboard = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row w-full flex-1 overflow-hidden bg-white">
+    <div className="flex flex-col lg:flex-row w-full flex-1 overflow-hidden bg-white relative">
+      {/* Welcome Modal */}
+      <AnimatePresence>
+        {showWelcomeModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-100 ring-1 ring-slate-200"
+            >
+              <div className="bg-indigo-600 p-8 text-white relative">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                  <BrainCircuit size={120} />
+                </div>
+                <h2 className="text-3xl font-black tracking-tight mb-2 uppercase">PythonITS Prototype</h2>
+                <div className="flex flex-col gap-2">
+                  <p className="text-indigo-100 font-medium">Intelligent Tutoring System for Python Programming</p>
+                  <p className="text-xs text-indigo-200/80 max-w-md leading-relaxed">
+                    This prototype explores how AI can act as a supportive peer rather than just a code generator, focusing on "Learning by Doing" with active scaffolding.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="p-8 space-y-6">
+                <div>
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Core Objectives</h3>
+                  <div className="grid gap-4">
+                    <div className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
+                        <Code2 size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">Adaptive Assessment</h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">Real-time diagnosis of syntax and logic errors in your Python code snippets.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                        <Terminal size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">Explainer engine</h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">Personalized pedagogical hints and explanations to guide you towards the solution without giving it away.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
+                        <Sparkles size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">Interactive Logic</h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">Observe how code behaves in our simulated environment to understand execution state.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="pt-4 flex flex-col items-center gap-3">
+                  <button 
+                    onClick={() => setShowWelcomeModal(false)}
+                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-200 active:scale-95 text-sm uppercase tracking-widest"
+                  >
+                    Enter Dashboard
+                  </button>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                    V 1.0.4 Research Stable • Authored by EDU-ITS Team
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1 bg-white overflow-hidden border-r border-slate-100 flex-grow">
         {/* Chat Header */}
@@ -451,7 +533,7 @@ const StudentDashboard = () => {
       </div>
 
       {/* Output Sidebar */}
-      <div className="hidden lg:flex flex-col w-[35%] min-w-[400px] max-w-[600px] bg-slate-900 overflow-hidden border-l border-slate-800">
+      <div className="hidden lg:flex flex-col w-[35%] min-w-[400px] max-w-[600px] bg-slate-900 overflow-hidden border-l border-slate-800 dark">
         <div className="px-6 py-5 bg-slate-800/40 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
              <div className="p-1.5 bg-emerald-500/10 rounded-md">
