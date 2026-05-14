@@ -23,10 +23,10 @@ const RegisterPage = () => {
       if (res.ok) {
         navigate('/login');
       } else {
-        setError(data.error);
+        setError(data.error || 'Registration failed. Please try again.');
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.');
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.');
     }
   };
 
