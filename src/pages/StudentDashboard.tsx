@@ -283,7 +283,7 @@ const StudentDashboard = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto h-[calc(100vh-140px)]">
+    <div className="flex flex-col lg:flex-row gap-6 w-full flex-1 p-6">
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden ring-1 ring-slate-200/50">
         {/* Chat Header */}
@@ -380,7 +380,7 @@ const StudentDashboard = () => {
       </div>
 
       {/* Output Sidebar */}
-      <div className="hidden lg:flex flex-col w-80 bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-800">
+      <div className="hidden lg:flex flex-col w-96 xl:w-[450px] bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-800">
         <div className="px-5 py-4 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Terminal size={16} className="text-emerald-400" />
