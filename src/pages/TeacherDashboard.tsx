@@ -92,59 +92,59 @@ const TeacherDashboard = () => {
         
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-600 text-sm uppercase tracking-wider font-bold">
+            <thead className="bg-slate-50 text-black text-lg uppercase tracking-wider font-bold">
               <tr>
-                <th className="px-6 py-4">Student</th>
-                <th className="px-6 py-4">Current Mastery</th>
-                <th className="px-6 py-4">Repeated Mistakes</th>
-                <th className="px-6 py-4">Activity</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+                <th className="px-6 py-6">Student</th>
+                <th className="px-6 py-6">Current Mastery</th>
+                <th className="px-6 py-6">Repeated Mistakes</th>
+                <th className="px-6 py-6">Activity</th>
+                <th className="px-6 py-6 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-100">
               {filteredStudents.map((student) => (
                 <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-                        <UserIcon size={20} />
+                  <td className="px-6 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-black">
+                        <UserIcon size={24} />
                       </div>
                       <div>
-                        <p className="font-bold text-slate-900 text-base">{student.name}</p>
-                        <p className="text-slate-400 text-sm">{student.email}</p>
+                        <p className="font-bold text-black text-lg">{student.name}</p>
+                        <p className="text-black text-base italic">{student.email}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1.5 rounded-full text-sm font-bold border ${getMasteryColor(student.mastery.masteryLevel)}`}>
+                  <td className="px-6 py-6">
+                    <span className={`px-4 py-2 rounded-full text-lg font-black border ${getMasteryColor(student.mastery.masteryLevel)}`}>
                       {student.mastery.masteryLevel || 'N/A'}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-1">
+                  <td className="px-6 py-6">
+                    <div className="flex flex-wrap gap-2">
                       {student.mastery.repeatedMistakes?.length > 0 ? (
                         student.mastery.repeatedMistakes.map((m, i) => (
-                          <span key={i} className="text-xs bg-red-50 text-red-600 px-2.5 py-1 rounded-md font-bold border border-red-100">
+                          <span key={i} className="text-sm bg-red-100 text-red-900 px-3 py-1.5 rounded-md font-bold border border-red-200">
                             {m}
                           </span>
                         ))
                       ) : (
-                        <span className="text-slate-400 text-xs font-medium">No patterns detected</span>
+                        <span className="text-black text-base font-medium italic">No patterns detected</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden w-24">
+                  <td className="px-6 py-6">
+                    <div className="w-32 bg-slate-200 h-2 rounded-full overflow-hidden">
                       <div 
                         className="bg-indigo-600 h-full rounded-full transition-all duration-1000"
                         style={{ width: `${student.mastery.history?.length * 10 || 0}%` }}
                       ></div>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1.5 font-bold">{student.mastery.history?.length || 0} interactions</p>
+                    <p className="text-sm text-black mt-2 font-black uppercase tracking-wider">{student.mastery.history?.length || 0} interactions</p>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <button className="text-slate-400 hover:text-indigo-600 transition-colors p-2 rounded-lg hover:bg-slate-100">
-                      <Mail size={18} />
+                  <td className="px-6 py-6 text-right">
+                    <button className="text-black hover:text-indigo-600 transition-colors p-3 rounded-xl hover:bg-slate-100">
+                      <Mail size={22} />
                     </button>
                   </td>
                 </tr>
